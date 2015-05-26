@@ -1,0 +1,5 @@
+res/
+.work/
+*.pyc
+runTestsGUI.py
+prefsGUI.py
