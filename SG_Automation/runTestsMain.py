@@ -34,13 +34,13 @@ class MyPrefsGUI(QtGui.QDialog):
         self.dialog.sitesList.setText("\n".join(item for item in web_sites))
 
     def set_prefs(self):
-        self.prefs.set_pref("git_username", self.dialog.userNameEdit.displayText())
-        self.prefs.set_pref("git_userpassword", self.dialog.userPasswordEdit.displayText())
-        self.prefs.set_pref("work_folder", self.dialog.workFolderEdit.displayText())
+        self.prefs.set_pref("git_username", self.dialog.userNameEdit.text())
+        self.prefs.set_pref("git_userpassword", self.dialog.userPasswordEdit.text())
+        self.prefs.set_pref("work_folder", self.dialog.workFolderEdit.text())
         self.prefs.set_pref("web_sites", self.dialog.sitesList.toPlainText().split("\n"))
 
     def browseDialog(self):
-        start_folder = self.dialog.workFolderEdit.displayText() or os.path.expanduser("~/.")
+        start_folder = self.dialog.workFolderEdit.text() or os.path.expanduser("~/.")
         folder = QtGui.QFileDialog.getExistingDirectory(self, "Select folder where files will be downloaded", start_folder)
         if folder:
             self.dialog.workFolderEdit.setText(folder)
@@ -121,7 +121,6 @@ class MyMainGUI(QtGui.QMainWindow):
             if message is None or len(message) == 0:
                 break
         if message is None:
-            print "Resetting Prefs"
             self.prefs = old_prefs
             self.validatePrefs()
 
