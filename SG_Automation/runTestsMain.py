@@ -132,24 +132,20 @@ class MyMainGUI(QtGui.QMainWindow):
             self.prefs = old_prefs
             self.validatePrefs()
 
-    def consoleOutputOLD(self, text, color=None):
-        cursor = self.ui.runOutput.textCursor()
-        cursor.movePosition(cursor.End)
-        if color is not None:
-            tc = self.ui.runOutput.textColor()
-            self.ui.runOutput.setTextColor('red')
-            self.ui.runOutput.append(text)
-            self.ui.runOutput.setTextColor(tc)
-            self.ui.runOutput.append('')
-            # cursor.insertHtml('<a href="file://%s">report</a>' % '/Users/hubertp/Work/sg-automation/SG_Automation/work/suites/build/2015-05-26_17h00m49s/generic/simple_login_artist_user/report.html')
-            cursor.insertHtml('<a href="%s">report</a>' % 'http://google.com')
-        else:
-            cursor.insertText(text)
-        # cursor.insertHtml("<pre>%s</pre>" % text)
-        # cursor.insertText("\n")
-        self.ui.runOutput.ensureCursorVisible()
+    _patternClearLine = re.compile("\x1B\[2K")
+    _patternGreen = re.compile("\x1B\[01;32m(.*)\x1B\[00m")
+    _patternRed = re.compile("\x1B\[01;31m(.*)\x1B\[00m")
+    _patternHttp = re.compile(r"\s(https?:/(/\S+)+)")
+    _patternFile = re.compile(r"\s((/\S+)+)")
 
     def consoleOutput(self, text, color=None):
+        # Doing some filtering and markup
+        text = self._patternClearLine.sub("", text)
+        text = self._patternHttp.sub(r'<a href="\1">\1</a>', text)
+        text = self._patternFile.sub(r'<a href="file:/\1">\1</a>', text)
+        text = self._patternGreen.sub(r'<font color="green">\1</font>', text)
+        text = self._patternRed.sub(r'<font color="red">\1</font>', text)
+
         cursor = self.ui.runOutput.textCursor()
         cursor.movePosition(cursor.End)
         if self.overwrite_last_line:
@@ -162,32 +158,14 @@ class MyMainGUI(QtGui.QMainWindow):
         cursor.insertHtml(text.replace('\n', '<br>'))
         self.ui.runOutput.ensureCursorVisible()
 
-#
-# Red='\x1B[01;31m'
-# Green='\x1B[01;32m'
-# Reset='\x1B[00m'
-# Check='\xE2\x9C\x93'
-# Cross='\xE2\x9C\x97'
-# ClearLine='\x1B[2K'
-#
-    _patternClearLine = re.compile("\x1B\[2K")
-    _patternGreen = re.compile("\x1B\[01;32m(.*)\x1B\[00m")
-    _patternRed = re.compile("\x1B\[01;31m(.*)\x1B\[00m")
-    _patternCheck = re.compile(u"\u2713")
-    _patternCross = re.compile(u"\u2717")
-    _patternHttp = re.compile(r"\s(https?:/(/\S+)+)")
-    _patternFile = re.compile(r"\s((/\S+)+)")
-
     def dataReady(self):
 
         data = unicode(self.process.readAll(), "UTF8")
-        data = self._patternClearLine.sub("", data)
-        # data = patternCheck.sub(u"\u2705", data)
-        # data = patternCross.sub(u"\u26d4", data)
-        data = self._patternHttp.sub(r'<a href="\1">\1</a>', data)
-        data = self._patternFile.sub(r'<a href="file:/\1">\1</a>', data)
-        data = self._patternGreen.sub(r'<font color="green">\1</font>', data)
-        data = self._patternRed.sub(r'<font color="red">\1</font>', data)
+        # data = self._patternClearLine.sub("", data)
+        # data = self._patternHttp.sub(r'<a href="\1">\1</a>', data)
+        # data = self._patternFile.sub(r'<a href="file:/\1">\1</a>', data)
+        # data = self._patternGreen.sub(r'<font color="green">\1</font>', data)
+        # data = self._patternRed.sub(r'<font color="red">\1</font>', data)
 
         self.consoleOutput(data)
 
@@ -195,25 +173,13 @@ class MyMainGUI(QtGui.QMainWindow):
         self.consoleOutput(str(self.process.readAllStandardError()), "red")
 
     def runTests(self):
-        # self.consoleOutput(unichr(2705))
         currentLocation = os.path.dirname(os.path.realpath(__file__))
         self.process.start(os.path.join(currentLocation, "SeleniumSandbox.py"), [
             "-t", "%s:%s" % (self.prefs.get_pref("git_username"), self.prefs.get_pref("git_userpassword")),
             "-w", self.prefs.get_pref("work_folder"),
-            # "-s", "suites/generic/runTest.command",
-            "-s", "suites/test_rail/review_and_approval/media_center/C69049",
-            "-v",
+            "-s", "suites/runTest.command",
             self.ui.siteList.currentText()
             ])
-        # self.consoleOutput('\
-        #     <a href="http://google.com">Google</a><br>\
-        #     <a href="file:///Users/hubertp/Work/sg-automation/SG_Automation/work/suites/build/2015-05-29_10h28m44s/generic/simple_login_artist_user">folder</a><br>\
-        #     <a href="file:///Users/hubertp/Work/sg-automation/SG_Automation/work/suites/build/2015-05-29_10h28m44s/generic/simple_login_artist_user/report.html">file html</a><br>\
-        #     <a href="file:///Users/hubertp/Work/sg-automation/SG_Automation/work/suites/build/2015-05-29_10h28m44s/generic/simple_login_artist_user/stderr.txt">file txt</a><br>')
-        # self.consoleOutput(currentLocation + "\n")
-        # self.consoleOutput(currentLocation + "\n", "red")
-        # self.consoleOutput(currentLocation + "\n", "green")
-        # self.consoleOutput(currentLocation + "\n")
 
     def openLinks(self, url):
         # print "->%s<-" % url
