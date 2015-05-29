@@ -50,10 +50,12 @@ class MyMainGUI(QtGui.QMainWindow):
     def __init__(self, prefs):
         super(MyMainGUI, self).__init__()
         self.prefs = prefs
+        self.overwrite_last_line = True
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
         self.ui.runTestsButton.clicked.connect(self.runTests)
         self.ui.stopTestsButton.clicked.connect(self.stopTests)
+        self.ui.stopTestsButton.setEnabled(True)
 
         web_sites = self.prefs.get_pref("web_sites") or []
         self.ui.siteList.addItems(web_sites)
@@ -72,8 +74,14 @@ class MyMainGUI(QtGui.QMainWindow):
         self.process.started.connect(lambda: self.ui.stopTestsButton.setEnabled(True))
         self.process.finished.connect(lambda: self.ui.stopTestsButton.setEnabled(False))
 
+        self.process.finished.connect(lambda: self.consoleOutput("%s" % "Success" if self.process.exitCode() == 0 else "Failed !"))
+
         # Get the prefs panel
         self.ui.actionPrefs.triggered.connect(self.updatePrefs)
+
+        # Ensure that we control the opening of links in the text browswer
+        self.ui.runOutput.anchorClicked.connect(self.openLinks)
+
 
 
     def __del__(self):
@@ -124,12 +132,34 @@ class MyMainGUI(QtGui.QMainWindow):
             self.prefs = old_prefs
             self.validatePrefs()
 
-    def consoleOutput(self, text):
+    def consoleOutputOLD(self, text, color=None):
         cursor = self.ui.runOutput.textCursor()
         cursor.movePosition(cursor.End)
-        cursor.insertText(text)
+        if color is not None:
+            tc = self.ui.runOutput.textColor()
+            self.ui.runOutput.setTextColor('red')
+            self.ui.runOutput.append(text)
+            self.ui.runOutput.setTextColor(tc)
+            self.ui.runOutput.append('')
+            # cursor.insertHtml('<a href="file://%s">report</a>' % '/Users/hubertp/Work/sg-automation/SG_Automation/work/suites/build/2015-05-26_17h00m49s/generic/simple_login_artist_user/report.html')
+            cursor.insertHtml('<a href="%s">report</a>' % 'http://google.com')
+        else:
+            cursor.insertText(text)
         # cursor.insertHtml("<pre>%s</pre>" % text)
         # cursor.insertText("\n")
+        self.ui.runOutput.ensureCursorVisible()
+
+    def consoleOutput(self, text, color=None):
+        cursor = self.ui.runOutput.textCursor()
+        cursor.movePosition(cursor.End)
+        if self.overwrite_last_line:
+            cursor.movePosition(cursor.StartOfLine, QTextCursor.KeepAnchor)
+            self.overwrite_last_line = False
+        if text[-1] == '\r':
+            self.overwrite_last_line = True
+        if color is not None:
+            text = '<font color="%s">%s</font>' % (color, text)
+        cursor.insertHtml(text.replace('\n', '<br>'))
         self.ui.runOutput.ensureCursorVisible()
 
 #
@@ -140,22 +170,29 @@ class MyMainGUI(QtGui.QMainWindow):
 # Cross='\xE2\x9C\x97'
 # ClearLine='\x1B[2K'
 #
+    _patternClearLine = re.compile("\x1B\[2K")
+    _patternGreen = re.compile("\x1B\[01;32m(.*)\x1B\[00m")
+    _patternRed = re.compile("\x1B\[01;31m(.*)\x1B\[00m")
+    _patternCheck = re.compile(u"\u2713")
+    _patternCross = re.compile(u"\u2717")
+    _patternHttp = re.compile(r"\s(https?:/(/\S+)+)")
+    _patternFile = re.compile(r"\s((/\S+)+)")
+
     def dataReady(self):
-        patternClearLine = re.compile("\x1B\[2K")
-        patternGreen = re.compile("\x1B\[01;32m(.*)\x1B\[00m")
-        patternRed = re.compile("\x1B\[01;31m(.*)\x1B\[00m")
 
         data = unicode(self.process.readAll(), "UTF8")
-        data = patternClearLine.sub('', data)
-        # data = patternGreen.sub(r'<font color="green">\1</font>', data)
-        # data = patternRed.sub(r'<font color="green">\1</font>', data)
-        data = patternGreen.sub(r'\1', data)
-        data = patternRed.sub(r'\1', data)
+        data = self._patternClearLine.sub("", data)
+        # data = patternCheck.sub(u"\u2705", data)
+        # data = patternCross.sub(u"\u26d4", data)
+        data = self._patternHttp.sub(r'<a href="\1">\1</a>', data)
+        data = self._patternFile.sub(r'<a href="file:/\1">\1</a>', data)
+        data = self._patternGreen.sub(r'<font color="green">\1</font>', data)
+        data = self._patternRed.sub(r'<font color="red">\1</font>', data)
 
         self.consoleOutput(data)
 
     def dataReadyErr(self):
-        self.consoleOutput(str(self.process.readAllStandardError()))
+        self.consoleOutput(str(self.process.readAllStandardError()), "red")
 
     def runTests(self):
         # self.consoleOutput(unichr(2705))
@@ -163,10 +200,25 @@ class MyMainGUI(QtGui.QMainWindow):
         self.process.start(os.path.join(currentLocation, "SeleniumSandbox.py"), [
             "-t", "%s:%s" % (self.prefs.get_pref("git_username"), self.prefs.get_pref("git_userpassword")),
             "-w", self.prefs.get_pref("work_folder"),
-            "-s", "suites/generic/runTest.command",
+            # "-s", "suites/generic/runTest.command",
+            "-s", "suites/test_rail/review_and_approval/media_center/C69049",
             "-v",
             self.ui.siteList.currentText()
             ])
+        # self.consoleOutput('\
+        #     <a href="http://google.com">Google</a><br>\
+        #     <a href="file:///Users/hubertp/Work/sg-automation/SG_Automation/work/suites/build/2015-05-29_10h28m44s/generic/simple_login_artist_user">folder</a><br>\
+        #     <a href="file:///Users/hubertp/Work/sg-automation/SG_Automation/work/suites/build/2015-05-29_10h28m44s/generic/simple_login_artist_user/report.html">file html</a><br>\
+        #     <a href="file:///Users/hubertp/Work/sg-automation/SG_Automation/work/suites/build/2015-05-29_10h28m44s/generic/simple_login_artist_user/stderr.txt">file txt</a><br>')
+        # self.consoleOutput(currentLocation + "\n")
+        # self.consoleOutput(currentLocation + "\n", "red")
+        # self.consoleOutput(currentLocation + "\n", "green")
+        # self.consoleOutput(currentLocation + "\n")
+
+    def openLinks(self, url):
+        # print "->%s<-" % url
+        QDesktopServices.openUrl(url)
+
 
     def stopTests(self):
         self.process.terminate()
@@ -175,6 +227,7 @@ class MyMainGUI(QtGui.QMainWindow):
     def show(self):
         super(MyMainGUI, self).show()
 
+        # Ensure that there are valid settings in place before we proceed
         message = self.validatePrefs()
         while True:
             if len(message) > 0:
