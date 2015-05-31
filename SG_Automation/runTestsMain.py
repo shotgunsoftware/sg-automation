@@ -55,7 +55,6 @@ class MyMainGUI(QtGui.QMainWindow):
         self.ui.setupUi(self)
         self.ui.runTestsButton.clicked.connect(self.runTests)
         self.ui.stopTestsButton.clicked.connect(self.stopTests)
-        self.ui.stopTestsButton.setEnabled(True)
 
         web_sites = self.prefs.get_pref("web_sites") or []
         self.ui.siteList.addItems(web_sites)
@@ -74,7 +73,7 @@ class MyMainGUI(QtGui.QMainWindow):
         self.process.started.connect(lambda: self.ui.stopTestsButton.setEnabled(True))
         self.process.finished.connect(lambda: self.ui.stopTestsButton.setEnabled(False))
 
-        self.process.finished.connect(lambda: self.consoleOutput("%s" % "Success" if self.process.exitCode() == 0 else "Failed !"))
+        self.process.finished.connect(lambda: self.consoleOutput("%s" % "<font color=\"green\">Success</font>\n" if self.process.exitCode() == 0 else "<font color=\"red\">Failed !</font>\n"))
 
         # Get the prefs panel
         self.ui.actionPrefs.triggered.connect(self.updatePrefs)
@@ -82,12 +81,17 @@ class MyMainGUI(QtGui.QMainWindow):
         # Ensure that we control the opening of links in the text browswer
         self.ui.runOutput.anchorClicked.connect(self.openLinks)
 
+        self.ui.siteList.lineEdit().setPlaceholderText('Please enter the URL here')
+        self.ui.siteList.activated.connect(self.validateURL)
 
 
     def __del__(self):
         if self.process.state() is QtCore.QProcess.ProcessState.Running:
             self.process.terminate()
             self.process.waitForFinished()
+
+    def validateURL(self, url):
+        print "->%s<-" % url
 
     def validatePrefs(self):
         return_value = ""
@@ -137,12 +141,14 @@ class MyMainGUI(QtGui.QMainWindow):
     _patternRed = re.compile("\x1B\[01;31m(.*)\x1B\[00m")
     _patternHttp = re.compile(r"\s(https?:/(/\S+)+)")
     _patternFile = re.compile(r"\s((/\S+)+)")
+    _patternFileHtml = re.compile(r"\s((/\S+)+.html)")
 
     def consoleOutput(self, text, color=None):
         # Doing some filtering and markup
         text = self._patternClearLine.sub("", text)
         text = self._patternHttp.sub(r'<a href="\1">\1</a>', text)
-        text = self._patternFile.sub(r'<a href="file:/\1">\1</a>', text)
+        text = self._patternFileHtml.sub(r'<a href="file:/\1">\1</a>', text)
+        # text = self._patternFile.sub(r'<a href="file:/\1">\1</a>', text)
         text = self._patternGreen.sub(r'<font color="green">\1</font>', text)
         text = self._patternRed.sub(r'<font color="red">\1</font>', text)
 
@@ -159,14 +165,7 @@ class MyMainGUI(QtGui.QMainWindow):
         self.ui.runOutput.ensureCursorVisible()
 
     def dataReady(self):
-
         data = unicode(self.process.readAll(), "UTF8")
-        # data = self._patternClearLine.sub("", data)
-        # data = self._patternHttp.sub(r'<a href="\1">\1</a>', data)
-        # data = self._patternFile.sub(r'<a href="file:/\1">\1</a>', data)
-        # data = self._patternGreen.sub(r'<font color="green">\1</font>', data)
-        # data = self._patternRed.sub(r'<font color="red">\1</font>', data)
-
         self.consoleOutput(data)
 
     def dataReadyErr(self):
@@ -177,7 +176,7 @@ class MyMainGUI(QtGui.QMainWindow):
         self.process.start(os.path.join(currentLocation, "SeleniumSandbox.py"), [
             "-t", "%s:%s" % (self.prefs.get_pref("git_username"), self.prefs.get_pref("git_userpassword")),
             "-w", self.prefs.get_pref("work_folder"),
-            "-s", "suites/runTest.command",
+            "-s", "suites/generic/simple_login_admin_user",
             self.ui.siteList.currentText()
             ])
 
