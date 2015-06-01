@@ -1,6 +1,7 @@
 #!/Applications/Shotgun.app/Contents/Frameworks/Python/bin/python
 
 import copy
+import fnmatch
 import os
 import re
 import signal
@@ -16,6 +17,12 @@ from prefsGUI import *
 import SeleniumSandbox
 import appPrefs
 
+def locateFiles(pattern, root=os.curdir):
+    '''Locate all files matching supplied filename pattern in and below
+    supplied root directory.'''
+    for path, dirs, files in os.walk(os.path.abspath(root)):
+        for filename in fnmatch.filter(files, pattern):
+            yield os.path.join(path, filename)
 
 class MyPrefsGUI(QtGui.QDialog):
     def __init__(self, prefs):
@@ -30,14 +37,21 @@ class MyPrefsGUI(QtGui.QDialog):
         self.dialog.userNameEdit.setText(self.prefs.get_pref("git_username"))
         self.dialog.userPasswordEdit.setText(self.prefs.get_pref("git_userpassword"))
         self.dialog.workFolderEdit.setText(self.prefs.get_pref("work_folder"))
-        web_sites = self.prefs.get_pref("web_sites") or []
+        seen = set()
+        web_sites = [i for i in map(unicode.strip, self.prefs.get_pref("web_sites")) if not (i in seen or seen.add(i))]
         self.dialog.sitesList.setText("\n".join(item for item in web_sites))
 
     def set_prefs(self):
         self.prefs.set_pref("git_username", self.dialog.userNameEdit.text())
         self.prefs.set_pref("git_userpassword", self.dialog.userPasswordEdit.text())
         self.prefs.set_pref("work_folder", self.dialog.workFolderEdit.text())
-        self.prefs.set_pref("web_sites", self.dialog.sitesList.toPlainText().split("\n"))
+        lines = self.dialog.sitesList.toPlainText().split("\n")
+        web_sites = []
+        for line in lines:
+            line = line.strip()
+            if len(line) > 0 and line not in web_sites:
+                web_sites.append(line)
+        self.prefs.set_pref("web_sites", web_sites)
 
     def browseDialog(self):
         start_folder = self.dialog.workFolderEdit.text() or os.path.expanduser("~/.")
@@ -51,13 +65,13 @@ class MyMainGUI(QtGui.QMainWindow):
         super(MyMainGUI, self).__init__()
         self.prefs = prefs
         self.overwrite_last_line = True
+        self.currentLocation = os.path.dirname(os.path.realpath(__file__))
+
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
         self.ui.runTestsButton.clicked.connect(self.runTests)
         self.ui.stopTestsButton.clicked.connect(self.stopTests)
-
-        web_sites = self.prefs.get_pref("web_sites") or []
-        self.ui.siteList.addItems(web_sites)
+        self.ui.getFilesButton.clicked.connect(self.getFiles)
 
         # QProcess object for external app
         self.process = QtCore.QProcess(self)
@@ -68,12 +82,20 @@ class MyMainGUI(QtGui.QMainWindow):
 
         # Just to prevent accidentally running multiple times
         # Disable the button when process starts, and enable it when it finishes
+        self.process.started.connect(lambda: self.ui.actionPrefs.setEnabled(False))
+        self.process.started.connect(lambda: self.ui.siteList.setEnabled(False))
+        self.process.started.connect(lambda: self.ui.getFilesButton.setEnabled(False))
         self.process.started.connect(lambda: self.ui.runTestsButton.setEnabled(False))
-        self.process.finished.connect(lambda: self.ui.runTestsButton.setEnabled(True))
         self.process.started.connect(lambda: self.ui.stopTestsButton.setEnabled(True))
+
+        self.process.finished.connect(lambda: self.ui.actionPrefs.setEnabled(True))
+        self.process.finished.connect(lambda: self.ui.siteList.setEnabled(True))
+        self.process.finished.connect(lambda: self.ui.getFilesButton.setEnabled(True))
+        self.process.finished.connect(lambda: self.ui.runTestsButton.setEnabled(True))
         self.process.finished.connect(lambda: self.ui.stopTestsButton.setEnabled(False))
 
         self.process.finished.connect(lambda: self.consoleOutput("%s" % "<font color=\"green\">Success</font>\n" if self.process.exitCode() == 0 else "<font color=\"red\">Failed !</font>\n"))
+        self.process.finished.connect(self.updateSuitesList)
 
         # Get the prefs panel
         self.ui.actionPrefs.triggered.connect(self.updatePrefs)
@@ -82,7 +104,13 @@ class MyMainGUI(QtGui.QMainWindow):
         self.ui.runOutput.anchorClicked.connect(self.openLinks)
 
         self.ui.siteList.lineEdit().setPlaceholderText('Please enter the URL here')
-        self.ui.siteList.activated.connect(self.validateURL)
+        self.ui.siteList.activated.connect(lambda: self.ui.targetList.setEnabled(False))
+        self.ui.siteList.activated.connect(lambda: self.ui.runTestsButton.setEnabled(False))
+        self.ui.siteList.currentIndexChanged.connect(lambda: self.ui.getFilesButton.setEnabled(True))
+        self.ui.siteList.currentIndexChanged.connect(self.validateURL)
+        self.ui.siteList.editTextChanged.connect(lambda: self.ui.getFilesButton.setEnabled(False))
+        self.ui.siteList.editTextChanged.connect(lambda: self.ui.runTestsButton.setEnabled(False))
+        self.ui.siteList.editTextChanged.connect(lambda: self.ui.targetList.setEnabled(False))
 
 
     def __del__(self):
@@ -90,8 +118,19 @@ class MyMainGUI(QtGui.QMainWindow):
             self.process.terminate()
             self.process.waitForFinished()
 
-    def validateURL(self, url):
-        print "->%s<-" % url
+    def validateURL(self, idx):
+        if idx != -1:
+            url = self.ui.siteList.itemText(idx).strip()
+            altIdx = self.ui.siteList.findText(url)
+            if idx != altIdx and altIdx != -1:
+                self.ui.siteList.removeItem(idx)
+                self.ui.siteList.setCurrentIndex(altIdx)
+            else:
+                self.ui.siteList.setItemText(idx, url)
+                web_sites = self.prefs.get_pref("web_sites")
+                if url not in web_sites:
+                    web_sites.append(url)
+                    self.prefs.set_pref("web_sites", web_sites)
 
     def validatePrefs(self):
         return_value = ""
@@ -101,9 +140,18 @@ class MyMainGUI(QtGui.QMainWindow):
             message = 'Logged to GitHub as user %s, working out of folder %s' % (self.sandbox.get_user_login(), self.sandbox.get_work_folder())
             self.consoleOutput(message + "\n")
             self.ui.statusbar.showMessage(message)
-            web_sites = self.prefs.get_pref("web_sites") or []
+            seen = set()
+            web_sites = [i for i in map(unicode.strip, self.prefs.get_pref("web_sites")) if not (i in seen or seen.add(i))]
+            currentURL = self.ui.siteList.currentText()
             self.ui.siteList.clear()
             self.ui.siteList.addItems(web_sites)
+            if self.ui.siteList.count() > 0 and len(self.ui.siteList.currentText()) > 0:
+                self.ui.getFilesButton.setEnabled(True)
+                idx = self.ui.siteList.findText(currentURL)
+                if idx != -1:
+                    self.ui.siteList.setCurrentIndex(idx)
+            else:
+                self.ui.getFilesButton.setEnabled(False)
         except SeleniumSandbox.GitHubError as e:
             self.consoleOutput("Error: %s" % e)
             return_value = "Unable to login to GitHub. Please enter valid GitHub credentials\n"
@@ -172,22 +220,45 @@ class MyMainGUI(QtGui.QMainWindow):
         self.consoleOutput(str(self.process.readAllStandardError()), "red")
 
     def runTests(self):
-        currentLocation = os.path.dirname(os.path.realpath(__file__))
-        self.process.start(os.path.join(currentLocation, "SeleniumSandbox.py"), [
+        self.process.start(os.path.join(self.currentLocation, "SeleniumSandbox.py"), [
             "-t", "%s:%s" % (self.prefs.get_pref("git_username"), self.prefs.get_pref("git_userpassword")),
             "-w", self.prefs.get_pref("work_folder"),
-            "-s", "suites/generic/simple_login_admin_user",
+            "-s", self.ui.targetList.currentText(),
             self.ui.siteList.currentText()
             ])
 
     def openLinks(self, url):
-        # print "->%s<-" % url
         QDesktopServices.openUrl(url)
 
 
     def stopTests(self):
         self.process.terminate()
         self.process.waitForFinished()
+
+    def getFiles(self):
+        self.process.start(os.path.join(self.currentLocation, "SeleniumSandbox.py"), [
+            "-t", "%s:%s" % (self.prefs.get_pref("git_username"), self.prefs.get_pref("git_userpassword")),
+            "-w", self.prefs.get_pref("work_folder"),
+            self.ui.siteList.currentText()
+            ])
+
+    def updateSuitesList(self):
+        workfolderLocation = os.path.join(self.currentLocation, self.prefs.get_pref("work_folder"))
+        fileList = locateFiles('runTest.command', workfolderLocation)
+        suiteList = []
+        currentSuite = self.ui.targetList.currentText()
+        suitePattern = re.compile("%s/(suites.*)/runTest.command" % workfolderLocation)
+        for filename in fileList:
+            suiteList.append(suitePattern.sub(r'\1', filename))
+
+        self.ui.targetList.clear()
+        self.ui.targetList.addItems(suiteList)
+        if self.ui.targetList.count() > 0:
+            self.ui.targetList.setEnabled(True)
+            self.ui.runTestsButton.setEnabled(True)
+            idx = self.ui.targetList.findText(currentSuite)
+            if idx != -1:
+                self.ui.targetList.setCurrentIndex(idx)
 
     def show(self):
         super(MyMainGUI, self).show()

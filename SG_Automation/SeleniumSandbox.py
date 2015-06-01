@@ -279,8 +279,6 @@ def main(argv):
         help="Test suite to run")
     parser.add_option("-v", "--verbose", action="store_true", dest="verbose",
         help="Output debugging information")
-    parser.add_option("-n", "--no-tests", action="store_false", dest="run_tests",
-        help="Will update the hierarchy, but will not run the tests")
     parser.add_option("-c", "--config-options",
         help="Comma separated list of key=value to be added to the config.xml")
     (options, args) = parser.parse_args()
@@ -288,8 +286,8 @@ def main(argv):
     if options.verbose is None:
         options.verbose = False
 
-    if options.run_tests is None:
-        options.run_tests = True
+    if options.suite is None:
+        options.suite = False
 
     if options.config_options is None:
         options.config_options = ""
@@ -353,11 +351,9 @@ def main(argv):
     sandbox.generate_config(run_options)
 
     return_value = 0
-    if options.run_tests:
+    if options.suite:
         print("INFO: Running tests from %s" % options.suite)
         return_value = sandbox.run_tests(options.suite)
-    else:
-        print('INFO: Would have attempted to run test: %s' % options.suite)
 
     print("INFO:     Test completed")
     sys.exit(return_value)
