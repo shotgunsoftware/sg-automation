@@ -188,15 +188,13 @@ class MyMainGUI(QtGui.QMainWindow):
     _patternGreen = re.compile("\x1B\[01;32m(.*)\x1B\[00m")
     _patternRed = re.compile("\x1B\[01;31m(.*)\x1B\[00m")
     _patternHttp = re.compile(r"\s(https?:/(/\S+)+)")
-    _patternFile = re.compile(r"\s((/\S+)+)")
-    _patternFileHtml = re.compile(r"\s((/\S+)+.html)")
+    _patternFileReport = re.compile(r"You can consult build report: (/\S+)/report.html")
+    _patternFailed = re.compile(r"(.*/test_rail/.*/C([0-9]+) failed)")
 
     def consoleOutput(self, text, color=None):
         # Doing some filtering and markup
         text = self._patternClearLine.sub("", text)
         text = self._patternHttp.sub(r'<a href="\1">\1</a>', text)
-        text = self._patternFileHtml.sub(r'<a href="file:/\1">\1</a>', text)
-        # text = self._patternFile.sub(r'<a href="file:/\1">\1</a>', text)
         text = self._patternGreen.sub(r'<font color="green">\1</font>', text)
         text = self._patternRed.sub(r'<font color="red">\1</font>', text)
 
@@ -209,6 +207,17 @@ class MyMainGUI(QtGui.QMainWindow):
             self.overwrite_last_line = True
         if color is not None:
             text = '<font color="%s">%s</font>' % (color, text)
+        # Patch to add link to TestRails
+        result = self._patternFailed.search(text)
+        if result:
+            url = "http://meqa.autodesk.com/index.php?/cases/view/%s" % result.group(2)
+            message = '<font color="red">The TestRail case can seen here: <a href="%s">%s</a></font>' % (url, url)
+            text = self._patternFailed.sub(r'\1\n%s' % message, text)
+        result = self._patternFileReport.search(text)
+        if result:
+            shortName = result.group(1).replace(self.currentLocation + "/", "")
+            message = '<font color="red">The failure report can seen here: <a href="file:/%s/report.html">%s</a></font>' % (result.group(1), shortName)
+            text = self._patternFileReport.sub(message, text)
         cursor.insertHtml(text.replace('\n', '<br>'))
         self.ui.runOutput.ensureCursorVisible()
 
@@ -224,6 +233,7 @@ class MyMainGUI(QtGui.QMainWindow):
             "-t", "%s:%s" % (self.prefs.get_pref("git_username"), self.prefs.get_pref("git_userpassword")),
             "-w", self.prefs.get_pref("work_folder"),
             "-s", self.ui.targetList.currentText(),
+#            "-c", "sg_config__timeout=30000",
             self.ui.siteList.currentText()
             ])
 
