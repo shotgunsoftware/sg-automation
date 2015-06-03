@@ -38,7 +38,8 @@ class MyPrefsGUI(QtGui.QDialog):
         self.dialog.userPasswordEdit.setText(self.prefs.get_pref("git_userpassword"))
         self.dialog.workFolderEdit.setText(self.prefs.get_pref("work_folder"))
         seen = set()
-        web_sites = [i for i in map(unicode.strip, self.prefs.get_pref("web_sites")) if not (i in seen or seen.add(i))]
+        web_sites = self.prefs.get_pref("web_sites") or []
+        web_sites = [i for i in map(unicode.strip, web_sites)  if not (i in seen or seen.add(i))]
         self.dialog.sitesList.setText("\n".join(item for item in web_sites))
 
     def set_prefs(self):
