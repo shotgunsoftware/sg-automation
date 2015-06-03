@@ -31,21 +31,47 @@ class MyPrefsGUI(QtGui.QDialog):
         self.dialog = Ui_Dialog()
         self.dialog.setupUi(self)
         self.dialog.browseButton.clicked.connect(self.browseDialog)
+        self.dialog.credsRadioButton.toggled.connect(self.radio_toggled)
         self.get_prefs()
 
+    def radio_toggled(self, value):
+        if self.dialog.credsRadioButton.isChecked():
+            self.dialog.userNameEdit.setEnabled(True)
+            self.dialog.userPasswordEdit.setEnabled(True)
+            self.dialog.apiKeyEdit.setEnabled(False)
+        else:
+            self.dialog.userNameEdit.setEnabled(False)
+            self.dialog.userPasswordEdit.setEnabled(False)
+            self.dialog.apiKeyEdit.setEnabled(True)
+
     def get_prefs(self):
-        self.dialog.userNameEdit.setText(self.prefs.get_pref("git_username"))
-        self.dialog.userPasswordEdit.setText(self.prefs.get_pref("git_userpassword"))
-        self.dialog.workFolderEdit.setText(self.prefs.get_pref("work_folder"))
+        password = self.prefs.get_pref("git_userpassword")
+        if password == "x-oauth-basic":
+            self.dialog.apiKeyRadioButton.setChecked(True)
+            self.dialog.apiKeyEdit.setText(self.prefs.get_pref("git_username"))
+        else:
+            self.dialog.credsRadioButton.setChecked(True)
+            self.dialog.userNameEdit.setText(self.prefs.get_pref("git_username"))
+            self.dialog.userPasswordEdit.setText(self.prefs.get_pref("git_userpassword"))
+
+        work_folder = self.prefs.get_pref("work_folder") or os.path.expanduser("~/sg_automation")
+        self.dialog.workFolderEdit.setText(work_folder)
         seen = set()
-        web_sites = self.prefs.get_pref("web_sites") or []
+        web_sites = self.prefs.get_pref("web_sites") or [u"https://6-3-develop.shotgunstudio.com"]
         web_sites = [i for i in map(unicode.strip, web_sites)  if not (i in seen or seen.add(i))]
         self.dialog.sitesList.setText("\n".join(item for item in web_sites))
 
     def set_prefs(self):
-        self.prefs.set_pref("git_username", self.dialog.userNameEdit.text())
-        self.prefs.set_pref("git_userpassword", self.dialog.userPasswordEdit.text())
-        self.prefs.set_pref("work_folder", self.dialog.workFolderEdit.text())
+        if self.dialog.credsRadioButton.isChecked():
+            self.prefs.set_pref("git_username", self.dialog.userNameEdit.text())
+            self.prefs.set_pref("git_userpassword", self.dialog.userPasswordEdit.text())
+        else:
+            self.prefs.set_pref("git_username", self.dialog.apiKeyEdit.text())
+            self.prefs.set_pref("git_userpassword", "x-oauth-basic")
+        work_folder = self.dialog.workFolderEdit.text()
+        if not os.path.exists(work_folder):
+            os.makedirs(work_folder)
+        self.prefs.set_pref("work_folder", work_folder)
         lines = self.dialog.sitesList.toPlainText().split("\n")
         web_sites = []
         for line in lines:
@@ -56,7 +82,7 @@ class MyPrefsGUI(QtGui.QDialog):
 
     def browseDialog(self):
         start_folder = self.dialog.workFolderEdit.text() or os.path.expanduser("~/.")
-        folder = QtGui.QFileDialog.getExistingDirectory(self, "Select folder where files will be downloaded", start_folder)
+        folder = QtGui.QFileDialog.getExistingDirectory(self, "Select the local folder where files will be downloaded", start_folder)
         if folder:
             self.dialog.workFolderEdit.setText(folder)
 
@@ -288,7 +314,7 @@ class MyMainGUI(QtGui.QMainWindow):
                 break
 
 def main():
-    prefs = appPrefs.AppPrefs(os.path.expanduser("~/sg_selenium_prefs.json"))
+    prefs = appPrefs.AppPrefs(os.path.expanduser("~/.sg_automation.json"))
     app = QtGui.QApplication(sys.argv)
     ui = MyMainGUI(prefs)
     ui.show()

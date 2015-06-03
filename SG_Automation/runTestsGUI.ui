@@ -95,7 +95,7 @@
       <item row="0" column="0" colspan="2">
        <widget class="QLabel" name="label">
         <property name="text">
-         <string>URL of shotgun site to test:</string>
+         <string>Shogun URL to test:</string>
         </property>
        </widget>
       </item>
