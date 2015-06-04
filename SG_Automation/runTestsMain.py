@@ -277,6 +277,7 @@ class MyMainGUI(QtGui.QMainWindow):
         self.process.start(os.path.join(self.currentLocation, "SeleniumSandbox.py"), [
             "-t", "%s:%s" % (self.prefs.get_pref("git_username"), self.prefs.get_pref("git_userpassword")),
             "-w", self.prefs.get_pref("work_folder"),
+#            "-v",
             self.ui.siteList.currentText()
             ])
 

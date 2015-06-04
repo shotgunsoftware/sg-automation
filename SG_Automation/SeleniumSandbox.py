@@ -53,6 +53,12 @@ class GitError(Exception):
     def __str__(self):
         return str(self.message)
 
+class UnsupportedBranch(Exception):
+    def __init__(self, message):
+        self.message = message
+    def __str__(self):
+        return str(self.message)
+
 
 
 class SeleniumSandbox:
@@ -229,19 +235,23 @@ class SeleniumSandbox:
                 raise Exception("Do not know how to handle object type %s for object %s" % (elem["type"], elem["path"]))
 
     def generate_config(self, options):
-        configFile = open(os.path.join(self.work_folder, "suites", "config", "config.xml"), "w")
-        configFile.write(
+        configFolder = os.path.join(self.work_folder, "suites", "config")
+        if os.path.exists(configFolder):
+            configFile = open(os.path.join(configFolder, "config.xml"), "w")
+            configFile.write(
 """<?xml version="1.0" encoding="UTF-8"?>
 <testdata>
   <vars
 """)
-        for key in options.keys():
-            configFile.write('    %s="%s"\n' % (key, options[key]))
-        configFile.write(
+            for key in options.keys():
+                configFile.write('    %s="%s"\n' % (key, options[key]))
+            configFile.write(
 """  />
 </testdata>
 """)
-        configFile.close()
+            configFile.close()
+        else:
+            raise UnsupportedBranch("This site does not support Selenium tests")
 
 
     def run_tests(self, test_suite):
@@ -348,15 +358,19 @@ def main(argv):
             run_options[k] = v
             if options.verbose:
                 print("INFO:     Adding config options %s=%s to run config" % (k, v))
-    sandbox.generate_config(run_options)
 
-    return_value = 0
-    if options.suite:
-        print("INFO: Running tests from %s" % options.suite)
-        return_value = sandbox.run_tests(options.suite)
+    try: 
+        sandbox.generate_config(run_options)
 
-    print("INFO:     Test completed")
-    sys.exit(return_value)
+        if options.suite:
+            print("INFO: Running tests from %s" % options.suite)
+            return_value = sandbox.run_tests(options.suite)
+            print("INFO:     Test completed")
+    except UnsupportedBranch as e:
+        print("ERROR: This Shotgun site does not support Selenium automation!")
+        sys.exit(2)
+
+    sys.exit(0)
 
 
 if __name__ == "__main__":
