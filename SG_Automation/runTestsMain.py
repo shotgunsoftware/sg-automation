@@ -98,7 +98,6 @@ class MyMainGUI(QtGui.QMainWindow):
         self.ui.setupUi(self)
         self.ui.runTestsButton.clicked.connect(self.runTests)
         self.ui.stopTestsButton.clicked.connect(self.stopTests)
-        self.ui.getFilesButton.clicked.connect(self.getFiles)
 
         # QProcess object for external app
         self.process = QtCore.QProcess(self)
@@ -111,13 +110,11 @@ class MyMainGUI(QtGui.QMainWindow):
         # Disable the button when process starts, and enable it when it finishes
         self.process.started.connect(lambda: self.ui.actionPrefs.setEnabled(False))
         self.process.started.connect(lambda: self.ui.siteList.setEnabled(False))
-        self.process.started.connect(lambda: self.ui.getFilesButton.setEnabled(False))
         self.process.started.connect(lambda: self.ui.runTestsButton.setEnabled(False))
         self.process.started.connect(lambda: self.ui.stopTestsButton.setEnabled(True))
 
         self.process.finished.connect(lambda: self.ui.actionPrefs.setEnabled(True))
         self.process.finished.connect(lambda: self.ui.siteList.setEnabled(True))
-        self.process.finished.connect(lambda: self.ui.getFilesButton.setEnabled(True))
         self.process.finished.connect(lambda: self.ui.runTestsButton.setEnabled(True))
         self.process.finished.connect(lambda: self.ui.stopTestsButton.setEnabled(False))
 
@@ -133,9 +130,7 @@ class MyMainGUI(QtGui.QMainWindow):
         self.ui.siteList.lineEdit().setPlaceholderText('Please enter the URL here')
         self.ui.siteList.activated.connect(lambda: self.ui.targetList.setEnabled(False))
         self.ui.siteList.activated.connect(lambda: self.ui.runTestsButton.setEnabled(False))
-        self.ui.siteList.currentIndexChanged.connect(lambda: self.ui.getFilesButton.setEnabled(True))
         self.ui.siteList.currentIndexChanged.connect(self.validateURL)
-        self.ui.siteList.editTextChanged.connect(lambda: self.ui.getFilesButton.setEnabled(False))
         self.ui.siteList.editTextChanged.connect(lambda: self.ui.runTestsButton.setEnabled(False))
         self.ui.siteList.editTextChanged.connect(lambda: self.ui.targetList.setEnabled(False))
 
@@ -146,6 +141,7 @@ class MyMainGUI(QtGui.QMainWindow):
             self.process.waitForFinished()
 
     def validateURL(self, idx):
+        self.ui.siteList.blockSignals(True)
         if idx != -1:
             url = self.ui.siteList.itemText(idx).strip()
             altIdx = self.ui.siteList.findText(url)
@@ -158,6 +154,8 @@ class MyMainGUI(QtGui.QMainWindow):
                 if url not in web_sites:
                     web_sites.append(url)
                     self.prefs.set_pref("web_sites", web_sites)
+                self.getFiles()
+        self.ui.siteList.blockSignals(False)
 
     def validatePrefs(self):
         return_value = ""
@@ -170,15 +168,17 @@ class MyMainGUI(QtGui.QMainWindow):
             seen = set()
             web_sites = [i for i in map(unicode.strip, self.prefs.get_pref("web_sites")) if not (i in seen or seen.add(i))]
             currentURL = self.ui.siteList.currentText()
+            if currentURL in web_sites:
+                self.ui.siteList.blockSignals(True)
             self.ui.siteList.clear()
             self.ui.siteList.addItems(web_sites)
+            if currentURL in web_sites:
+                self.ui.siteList.blockSignals(False)
+
             if self.ui.siteList.count() > 0 and len(self.ui.siteList.currentText()) > 0:
-                self.ui.getFilesButton.setEnabled(True)
                 idx = self.ui.siteList.findText(currentURL)
                 if idx != -1:
                     self.ui.siteList.setCurrentIndex(idx)
-            else:
-                self.ui.getFilesButton.setEnabled(False)
         except SeleniumSandbox.GitHubError as e:
             self.consoleOutput("Error: %s" % e)
             return_value = "Unable to login to GitHub. Please enter valid GitHub credentials\n"
@@ -247,6 +247,7 @@ class MyMainGUI(QtGui.QMainWindow):
             text = self._patternFileReport.sub(message, text)
         cursor.insertHtml(text.replace('\n', '<br>'))
         self.ui.runOutput.ensureCursorVisible()
+        cursor.movePosition(cursor.End)
 
     def dataReady(self):
         data = unicode(self.process.readAll(), "UTF8")
