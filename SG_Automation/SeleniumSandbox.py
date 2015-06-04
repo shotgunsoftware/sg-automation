@@ -200,6 +200,24 @@ class SeleniumSandbox:
         tree = self.get_tree(sha)
 
         prefix = prefix or self.work_folder + os.path.sep
+        expected = [x['path'] for x in tree["tree"]]
+        # We want to avoir deleting our .git folder.
+        expected.append(".git")
+
+        actual = os.listdir(prefix)
+
+        # Cleanup any extra files or folders
+        diff = [x for x in actual if x not in expected]
+        for i in diff:
+            obj = prefix + i
+            if os.path.isdir(obj):
+                print("Removing folder: %s" % obj)
+                shutil.rmtree(obj)
+            else:
+                print("Removing file: %s" % obj)
+                os.remove(obj)
+
+        # And now sync our files.
         for elem in tree["tree"]:
             path = prefix + elem["path"]
             sha = elem["sha"]
