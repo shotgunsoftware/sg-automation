@@ -29,6 +29,12 @@
       </item>
       <item row="1" column="0" colspan="2">
        <widget class="QComboBox" name="siteList">
+        <property name="minimumSize">
+         <size>
+          <width>450</width>
+          <height>0</height>
+         </size>
+        </property>
         <property name="editable">
          <bool>true</bool>
         </property>

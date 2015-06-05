@@ -316,8 +316,13 @@ class MyMainGUI(QtGui.QMainWindow):
                 break
 
 def main():
+    currentLocation = os.path.dirname(os.path.realpath(__file__))
     prefs = appPrefs.AppPrefs(os.path.expanduser("~/.sg_automation.json"))
     app = QtGui.QApplication(sys.argv)
+    app.setStyle("plastique")
+    with open(os.path.join(currentLocation, "darkorange.stylesheet"), "r") as f:
+        read_data = f.read()
+        app.setStyleSheet(read_data)
     ui = MyMainGUI(prefs)
     ui.show()
     sys.exit(app.exec_())

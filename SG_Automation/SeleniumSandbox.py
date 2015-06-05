@@ -98,6 +98,7 @@ class SeleniumSandbox:
 
         self.selenium_version = self.find_tree(self.shotgun_version, "test/selenium")
         self.fetch_tree(self.selenium_version)
+        print(".")
 
     def get_elems(self, url):
         # base64string = base64.encodestring("%s:%s" % (self.git_token, "x-oauth-basic")).strip()
@@ -161,6 +162,8 @@ class SeleniumSandbox:
 
             if self.debugging:
                 print("DEBUG: Getting blob %s" % blobFile)
+            else:
+                print ".",
 
             if not os.path.exists(blobFileFolder):
                 os.mkdir(blobFileFolder)
@@ -357,7 +360,7 @@ def main(argv):
     (version_name, version_hash) = get_site_version(shotgun_url)
     print("INFO:     Found version to be %s" % version_hash)
 
-    print("INFO: Getting Shotgun files from repo")
+    print("INFO: Getting Shotgun files from repo. Please wait")
     sandbox.fetch_shotgun_files(version_hash)
     print("INFO:     Done getting files")
 
