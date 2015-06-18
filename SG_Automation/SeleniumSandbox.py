@@ -53,6 +53,12 @@ class GitError(Exception):
     def __str__(self):
         return str(self.message)
 
+class UnsupportedBranch(Exception):
+    def __init__(self, message):
+        self.message = message
+    def __str__(self):
+        return str(self.message)
+
 
 
 class SeleniumSandbox:
@@ -92,6 +98,7 @@ class SeleniumSandbox:
 
         self.selenium_version = self.find_tree(self.shotgun_version, "test/selenium")
         self.fetch_tree(self.selenium_version)
+        print(".")
 
     def get_elems(self, url):
         # base64string = base64.encodestring("%s:%s" % (self.git_token, "x-oauth-basic")).strip()
@@ -155,6 +162,8 @@ class SeleniumSandbox:
 
             if self.debugging:
                 print("DEBUG: Getting blob %s" % blobFile)
+            else:
+                print ".",
 
             if not os.path.exists(blobFileFolder):
                 os.mkdir(blobFileFolder)
@@ -194,6 +203,24 @@ class SeleniumSandbox:
         tree = self.get_tree(sha)
 
         prefix = prefix or self.work_folder + os.path.sep
+        expected = [x['path'] for x in tree["tree"]]
+        # We want to avoir deleting our .git folder.
+        expected.append(".git")
+
+        actual = os.listdir(prefix)
+
+        # Cleanup any extra files or folders
+        diff = [x for x in actual if x not in expected]
+        for i in diff:
+            obj = prefix + i
+            if os.path.isdir(obj):
+                print("Removing folder: %s" % obj)
+                shutil.rmtree(obj)
+            else:
+                print("Removing file: %s" % obj)
+                os.remove(obj)
+
+        # And now sync our files.
         for elem in tree["tree"]:
             path = prefix + elem["path"]
             sha = elem["sha"]
@@ -229,19 +256,23 @@ class SeleniumSandbox:
                 raise Exception("Do not know how to handle object type %s for object %s" % (elem["type"], elem["path"]))
 
     def generate_config(self, options):
-        configFile = open(os.path.join(self.work_folder, "suites", "config", "config.xml"), "w")
-        configFile.write(
+        configFolder = os.path.join(self.work_folder, "suites", "config")
+        if os.path.exists(configFolder):
+            configFile = open(os.path.join(configFolder, "config.xml"), "w")
+            configFile.write(
 """<?xml version="1.0" encoding="UTF-8"?>
 <testdata>
   <vars
 """)
-        for key in options.keys():
-            configFile.write('    %s="%s"\n' % (key, options[key]))
-        configFile.write(
+            for key in options.keys():
+                configFile.write('    %s="%s"\n' % (key, options[key]))
+            configFile.write(
 """  />
 </testdata>
 """)
-        configFile.close()
+            configFile.close()
+        else:
+            raise UnsupportedBranch("This site does not support Selenium tests")
 
 
     def run_tests(self, test_suite):
@@ -279,8 +310,6 @@ def main(argv):
         help="Test suite to run")
     parser.add_option("-v", "--verbose", action="store_true", dest="verbose",
         help="Output debugging information")
-    parser.add_option("-n", "--no-tests", action="store_false", dest="run_tests",
-        help="Will update the hierarchy, but will not run the tests")
     parser.add_option("-c", "--config-options",
         help="Comma separated list of key=value to be added to the config.xml")
     (options, args) = parser.parse_args()
@@ -288,8 +317,8 @@ def main(argv):
     if options.verbose is None:
         options.verbose = False
 
-    if options.run_tests is None:
-        options.run_tests = True
+    if options.suite is None:
+        options.suite = False
 
     if options.config_options is None:
         options.config_options = ""
@@ -331,7 +360,7 @@ def main(argv):
     (version_name, version_hash) = get_site_version(shotgun_url)
     print("INFO:     Found version to be %s" % version_hash)
 
-    print("INFO: Getting Shotgun files from repo")
+    print("INFO: Getting Shotgun files from repo. Please wait")
     sandbox.fetch_shotgun_files(version_hash)
     print("INFO:     Done getting files")
 
@@ -350,17 +379,19 @@ def main(argv):
             run_options[k] = v
             if options.verbose:
                 print("INFO:     Adding config options %s=%s to run config" % (k, v))
-    sandbox.generate_config(run_options)
 
-    return_value = 0
-    if options.run_tests:
-        print("INFO: Running tests from %s" % options.suite)
-        return_value = sandbox.run_tests(options.suite)
-    else:
-        print('INFO: Would have attempted to run test: %s' % options.suite)
+    try: 
+        sandbox.generate_config(run_options)
 
-    print("INFO:     Test completed")
-    sys.exit(return_value)
+        if options.suite:
+            print("INFO: Running tests from %s" % options.suite)
+            return_value = sandbox.run_tests(options.suite)
+            print("INFO:     Test completed")
+    except UnsupportedBranch as e:
+        print("ERROR: This Shotgun site does not support Selenium automation!")
+        sys.exit(2)
+
+    sys.exit(0)
 
 
 if __name__ == "__main__":

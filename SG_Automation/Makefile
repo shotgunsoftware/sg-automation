@@ -8,10 +8,14 @@ SG_Automation.app: \
 	SG_Automation.app/Contents/MacOS/SeleniumSandbox.py \
 	SG_Automation.app/Contents/MacOS/appPrefs.py \
 	SG_Automation.app/Contents/MacOS/prefsGUI.py \
-	SG_Automation.app/Contents/MacOS/runTestsGUI.py
+	SG_Automation.app/Contents/MacOS/runTestsGUI.py \
+	SG_Automation.app/Contents/MacOS/darkorange.stylesheet
 
 SG_Automation.app/Contents/MacOS/SG_Automation: runTestsMain.py
 	@cp -v $< $@
 
 SG_Automation.app/Contents/MacOS/%.py: %.py
+	@cp -v $< $@
+
+SG_Automation.app/Contents/MacOS/%.stylesheet: %.stylesheet
 	@cp -v $< $@

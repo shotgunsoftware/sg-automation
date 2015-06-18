@@ -1,0 +1,149 @@
+/*
+ Copyright (c) 2014 Shotgun Software Inc.
+ 
+ CONFIDENTIAL AND PROPRIETARY
+ 
+ This work is provided "AS IS" and subject to the Shotgun Pipeline Toolkit
+ Source Code License included in this distribution package. See LICENSE.
+ By accessing, using, copying or modifying this work you indicate your
+ agreement to the Shotgun Pipeline Toolkit Source Code License. All rights
+ not expressly granted therein are reserved by Shotgun Software Inc.
+*/
+
+/*
+Make sure standard dialogs and button boxes
+Will have the "Do it" button on the far right
+*/
+QDialogButtonBox {
+    button-layout: 3;
+}
+
+/*
+Make the line edit looks like a QLabel 
+when not in edit mode 
+*/
+EntityLineWidget {
+    border: none;
+    background: #424242;
+    font-style: normal;
+    font-weight: bold;
+}
+
+/*
+In edit mode, show it is a QLineEdit if it is not read only
+*/
+EntityLineWidget:focus:!read-only {
+    border: 2px solid #2C93E2;
+    border-radius: 2px;
+    background: none;
+    font-style: normal;
+    font-weight: normal;
+}
+
+/*
+When not in edit and the value is empty or not valid
+Make it SG red
+*/
+EntityLineWidget:!focus[valid="false"] {
+    color: #FC6246;
+    font-style: italic;
+}
+
+
+/* Thin progress bar on the main window
+*/
+QProgressBar#progress_bar {
+     border: 1px none grey;
+     text-align: center;
+ }
+
+QProgressBar::chunk {
+    background-color: #2C93E2;
+}
+
+/*
+Drop area style : big font, and a dashed outline
+*/
+QLabel#drop_area_label {
+    border: 2px dashed grey;
+    border-radius: 4px;
+    font-size: 50px;
+    font-style: bold;
+    background-color: #2B2B2B;
+}
+
+QFrame#SequenceCard, #CutCard, #CutDiffCard {
+    border: 2px solid black;
+}
+
+/*
+QFrame:!focus#SequenceCard {
+    border-color: red;
+}
+QFrame#SequenceCard[selected="true"] {
+    border-color: #2C93E2;
+    background-color: orange;
+}
+*/
+
+/*
+Cut summary view mode buttons, add a blue underline
+when they are checked
+*/
+QAbstractButton#new_select_button:checked,
+    #cut_change_select_button:checked,
+    #omitted_select_button:checked,
+    #reinstated_select_button:checked,
+    #rescan_select_button:checked,
+    #total_button:checked {
+    color: #2C93E2;
+    border-top: 2px none #2C93E2;
+    border-bottom: 2px solid #2C93E2;
+    outline: none;
+}
+/*
+Cut summary view mode buttons, disable regular
+press style
+*/
+QAbstractButton#new_select_button:pressed,
+    #cut_change_select_button:pressed,
+    #omitted_select_button:pressed,
+    #reinstated_select_button:pressed,
+    #rescan_select_button:pressed,
+    #total_button:pressed {
+    color: #2C93E2;
+    border-top: 2px none #2C93E2;
+    border-bottom: 2px solid #2C93E2;
+    outline: none;
+}
+/*
+Cut summary view mode buttons, disable regular
+press style
+*/
+QAbstractButton#new_select_button:hover,
+    #cut_change_select_button:hover,
+    #omitted_select_button:hover,
+    #reinstated_select_button:hover,
+    #rescan_select_button:hover,
+    #total_button:hover {
+    color: #2C93E2;
+    font-style: bold;
+}
+/*
+Make the radio button blue when checked
+*/
+QAbstractButton#only_repeated_check_box:checked {
+    color: #2C93E2;
+}
+#horizontalLayout_3 {
+    background-color: orange;
+}
+/* Titles in SG blue for cut summary cards */
+QLabel#shot_title_label, #version_title_label, #head_title_label, #cut_title_label, #tail_title_label {
+    color: #2C93E2
+}
+/* Success window */
+QFrame#success_frame {
+    color: #2C93E2;
+    border: 1px solid #555555;
+}
