@@ -40,7 +40,7 @@ def main(argv):
         res = rd.run_job('16653d20-77aa-42e5-afe7-9fbe509d4225', argString={'sitename': options.site_name, 'dbbackup': 'false'}, timeout=1)
         job_id = res['id']
         retry = 0
-        while res['status'] == 'running' and retry < 15:
+        while res['status'] == 'running' and retry < 20:
             retry += 1
             print "INFO: Waiting for the job to complete..."
             time.sleep(15)
