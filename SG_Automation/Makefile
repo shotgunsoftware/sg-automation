@@ -40,4 +40,4 @@ Installer.dmg:
 		$@ build
 
 clean:
-	rm -rvf build Installer.dmg rw.Installer.dmg *.pyc SG_Automation.app/Contents/MacOS/*.pyc
+	rm -rvf build Installer.dmg runTestsGUI.py prefsGUI.py SG_Automation.app.zip rw.Installer.dmg *.pyc SG_Automation.app/Contents/MacOS/*.pyc
