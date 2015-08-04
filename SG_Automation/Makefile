@@ -1,4 +1,4 @@
-all: runTestsGUI.py prefsGUI.py SG_Automation.app
+all: runTestsGUI.py prefsGUI.py SG_Automation.app Installer.dmg
 
 %.py: %.ui
 	/Applications/Shotgun.app/Contents/Frameworks/Python/bin/python /Applications/Shotgun.app/Contents/Frameworks/Python/bin/pyside-uic $< -o $@
