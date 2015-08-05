@@ -1,6 +1,8 @@
 res/
 .work/
 *.pyc
+build/
 runTestsGUI.py
 prefsGUI.py
 SG_Automation.app.zip
+Installer.dmg

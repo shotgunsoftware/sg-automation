@@ -215,7 +215,7 @@ class MyMainGUI(QtGui.QMainWindow):
     _patternGreen = re.compile("\x1B\[01;32m(.*)\x1B\[00m")
     _patternRed = re.compile("\x1B\[01;31m(.*)\x1B\[00m")
     _patternHttp = re.compile(r"\s(https?:/(/\S+)+)")
-    _patternFileReport = re.compile(r"You can consult build report: (/\S+)/report.html")
+    _patternFileReport = re.compile(r"You can consult the build report: (/\S+)/report.html")
     _patternFailed = re.compile(r"(.*/test_rail/.*/C([0-9]+) failed)")
 
     def consoleOutput(self, text, color=None):
