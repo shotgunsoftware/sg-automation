@@ -160,9 +160,24 @@ class MyMainGUI(QtGui.QMainWindow):
     def validatePrefs(self):
         return_value = ""
         try:
-            self.sandbox = SeleniumSandbox.SeleniumSandbox("%s:%s" % (self.prefs.get_pref("git_username"), self.prefs.get_pref("git_userpassword")))
+            git_creds = "%s:%s" % (
+                    self.prefs.get_pref("git_username"),
+                    self.prefs.get_pref("git_userpassword"),
+                )
+            testrail_creds = None
+            if self.prefs.get_pref("testrail_username") and self.prefs.get_pref("testrail_userpassword"):
+                testrail_creds = "%s:%s" % (
+                    self.prefs.get_pref("testrail_username"),
+                    self.prefs.get_pref("testrail_userpassword"),
+                )
+            self.sandbox = SeleniumSandbox.SeleniumSandbox(
+                git_token=git_creds,
+                testrail_token=testrail_creds
+            )
             self.sandbox.set_work_folder(self.prefs.get_pref("work_folder"))
             message = 'Logged to GitHub as user %s, working out of folder %s' % (self.sandbox.get_user_login(), self.sandbox.get_work_folder())
+            if testrail_creds:
+                message += ' ALSO logged to TestRail'
             self.consoleOutput(message + "\n")
             self.ui.statusbar.showMessage(message)
             seen = set()
@@ -258,10 +273,10 @@ class MyMainGUI(QtGui.QMainWindow):
 
     def runTests(self):
         self.process.start(os.path.join(self.currentLocation, "SeleniumSandbox.py"), [
-            "-t", "%s:%s" % (self.prefs.get_pref("git_username"), self.prefs.get_pref("git_userpassword")),
-            "-w", self.prefs.get_pref("work_folder"),
-            "-s", self.ui.targetList.currentText(),
-#            "-c", "sg_config__timeout=30000",
+            "--git-token", "%s:%s" % (self.prefs.get_pref("git_username"), self.prefs.get_pref("git_userpassword")),
+            "--work-folder", self.prefs.get_pref("work_folder"),
+            "--suite", self.ui.targetList.currentText(),
+            # "--config-options", "sg_config__timeout=30000",
             self.ui.siteList.currentText()
             ])
 
@@ -275,9 +290,9 @@ class MyMainGUI(QtGui.QMainWindow):
 
     def getFiles(self):
         self.process.start(os.path.join(self.currentLocation, "SeleniumSandbox.py"), [
-            "-t", "%s:%s" % (self.prefs.get_pref("git_username"), self.prefs.get_pref("git_userpassword")),
-            "-w", self.prefs.get_pref("work_folder"),
-#            "-v",
+            "--git-token", "%s:%s" % (self.prefs.get_pref("git_username"), self.prefs.get_pref("git_userpassword")),
+            "--work-folder", self.prefs.get_pref("work_folder"),
+            # "--verbose",
             self.ui.siteList.currentText()
             ])
 

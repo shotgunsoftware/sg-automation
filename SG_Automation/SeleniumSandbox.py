@@ -13,6 +13,8 @@ import sys
 import urllib2
 import urlparse
 
+import testrail
+
 from optparse import OptionParser
 from pprint import pprint as pp
 
@@ -47,6 +49,12 @@ class GitHubError(Exception):
     def __str__(self):
         return str(self.message)
 
+class TestRailError(Exception):
+    def __init__(self, message):
+        self.message = message
+    def __str__(self):
+        return str(self.message)
+
 class GitError(Exception):
     def __init__(self, message):
         self.message = message
@@ -62,9 +70,24 @@ class UnsupportedBranch(Exception):
 
 
 class SeleniumSandbox:
-    def __init__(self, git_token, debugging=False):
+    def __init__(self, git_token, testrail_token=None, debugging=False):
         self.command_file = "runTest.command"
         self.git_token = git_token
+        if testrail_token:
+            if ':' in  testrail_token:
+                (user, password) = testrail_token.split(':')
+            self.testrail = testrail.APIClient('http://meqa.autodesk.com')
+            self.testrail.user = user
+            self.testrail.password = password
+            self.testrail_project_id = None
+            for project in self.testrail.send_get('get_projects'):
+                if project['name'] == 'Shotgun':
+                    self.testrail_project_id = project['id']
+                    break
+            if self.testrail_project_id is None:
+                raise TestRailError('Project Shotgun cannot be found on TestRail')
+            self.testrail_runs = self.get_testrail_runs()
+            self.testrail_plans = self.get_testrail_plans()
         self.debugging = debugging
         self.user = self.get_elems("https://api.github.com/user")
 
@@ -89,6 +112,20 @@ class SeleniumSandbox:
 
     def get_user_login(self):
         return self.user['login']
+
+    def get_testrail_runs(self):
+        runs = {}
+        if self.testrail_project_id:
+            for run in self.testrail.send_get('get_runs/%d&is_completed=0' % self.testrail_project_id):
+                runs[str(run['id'])] = run
+        return runs
+
+    def get_testrail_plans(self):
+        plans = {}
+        if self.testrail_project_id:
+            for plan in self.testrail.send_get('get_plans/%d&is_completed=0' % self.testrail_project_id):
+                plans[str(plan['id'])] = plan
+        return plans
 
     def fetch_shotgun_files(self, shotgun_version):
         self.shotgun_version = self.get_tree(shotgun_version)["sha"]
@@ -302,26 +339,46 @@ class SeleniumSandbox:
 
 def main(argv):
     parser = OptionParser(usage="usage: %prog [options] url")
-    parser.add_option("-t", "--git-token",
-        help="API key or credentials user:password or token::x-oauth-basic")
-    parser.add_option("-w", "--work-folder",
+    parser.add_option("--git-token",
+        help="API key or credentials user:password or token:x-oauth-basic")
+    parser.add_option("--testrail-token",
+        help="API key or credentials user:password or email:api-key (OPTIONAL)")
+    parser.add_option("--testrail-run",
+        help="TestRail run or plan to execute (OPTIONAL, requires --testrail-token)")
+    parser.add_option("--suite",
+        help="Test suite to execute (OPTIONAL)")
+    parser.add_option("--work-folder",
         help="Work folder. Will be created if required")
-    parser.add_option("-s", "--suite",
-        help="Test suite to run")
+    parser.add_option("--config-options",
+        help="Comma separated list of key=value to be added to the config.xml (OPTIONAL)")
     parser.add_option("-v", "--verbose", action="store_true", dest="verbose",
         help="Output debugging information")
-    parser.add_option("-c", "--config-options",
-        help="Comma separated list of key=value to be added to the config.xml")
     (options, args) = parser.parse_args()
 
     if options.verbose is None:
         options.verbose = False
 
+    if options.testrail_token is None:
+        options.testrail_token = ''
+
     if options.suite is None:
         options.suite = False
 
+    if options.testrail_run is None:
+        options.testrail_run = False
+
     if options.config_options is None:
         options.config_options = ""
+
+    if (options.suite and options.testrail_run):
+        print "Options --suite and --testrail-run are mutually exclusive."
+        parser.print_help()
+        sys.exit(2)
+
+    if options.testrail_run and not options.testrail_token:
+        print "A testrail-run argument requires a valid TestRail token."
+        parser.print_help()
+        sys.exit(2)
 
     if None in vars(options).values():
         print "Missing required option for Shotgun API connection."
@@ -345,10 +402,28 @@ def main(argv):
 
     shotgun_url = "%s://%s" % (url.scheme, url.netloc)
 
-    print "INFO: Connecting to GitHub"
-    sandbox = SeleniumSandbox(options.git_token, options.verbose)
+    if options.testrail_token:
+        print "INFO: Connecting to GitHub and TestRail"
+    else:
+        print "INFO: Connecting to GitHub"
+    sandbox = SeleniumSandbox(options.git_token, options.testrail_token, options.verbose)
     signal.signal(signal.SIGINT, sandbox.signal_handler)
-    print "INFO:     Connected as user %s" % sandbox.user["login"]
+    print "INFO:     Connected to GitHub as user %s" % sandbox.user["login"]
+
+    if options.testrail_run and (
+            options.testrail_run not in sandbox.testrail_runs and
+            options.testrail_run not in sandbox.testrail_plans):
+        print("ERROR: Invalid TestRail run or plan: %s" % options.testrail_run)
+        sys.exit(2)
+        pass
+
+    if options.testrail_token and options.verbose:
+        print "  Runs"
+        for res_id in sandbox.testrail_runs.keys():
+            print "     %s - %s" % (sandbox.testrail_runs[res_id]['name'], res_id)
+        print "  Plans"
+        for res_id in sandbox.testrail_plans.keys():
+            print "     %s - %s" % (sandbox.testrail_plans[res_id]['name'], res_id)
 
     print "INFO: Setting work folder to %s" % options.work_folder
     if not os.path.exists(options.work_folder):
@@ -380,13 +455,15 @@ def main(argv):
             if options.verbose:
                 print("INFO:     Adding config options %s=%s to run config" % (k, v))
 
-    try: 
+    try:
         sandbox.generate_config(run_options)
 
         if options.suite:
             print("INFO: Running tests from %s" % options.suite)
             return_value = sandbox.run_tests(options.suite)
             print("INFO:     Test completed")
+        elif options.testrail_run:
+            pass
     except UnsupportedBranch as e:
         print("ERROR: This Shotgun site does not support Selenium automation!")
         sys.exit(2)
