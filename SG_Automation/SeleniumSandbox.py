@@ -6,6 +6,7 @@ import glob
 import hashlib
 import json
 import os
+import platform
 import re
 import shutil
 import signal
@@ -79,8 +80,6 @@ class UnsupportedBranch(Exception):
     def __str__(self):
         return str(self.message)
 
-
-
 class SeleniumSandbox:
     def __init__(self, git_token, testrail_token=None, debugging=False):
         self.command_file = "runTest.command"
@@ -103,6 +102,9 @@ class SeleniumSandbox:
         self.debugging = debugging
         self.testrail_available_cases = {}
         self.target_url = None
+        self.target_version_name = None
+        self.target_version_hash = None
+        self.testrail_suites = {}
         self.user = self.get_elems("https://api.github.com/user")
 
     def set_work_folder(self, work_folder):
@@ -141,8 +143,10 @@ class SeleniumSandbox:
                 plans[plan['id']] = plan
         return plans
 
-    def fetch_shotgun_files(self, shotgun_version):
-        self.shotgun_version = self.get_tree(shotgun_version)["sha"]
+    def fetch_shotgun_files(self, target_url):
+        self.target_url = target_url
+        (self.target_version_name, self.target_version_hash) = get_site_version(target_url)
+        self.shotgun_version = self.get_tree(self.target_version_hash)["sha"]
         head_file = open(self.git_folder + os.path.sep + "HEAD", "w")
         head_file.write("%s\n" % self.shotgun_version)
         head_file.close()
@@ -320,10 +324,9 @@ class SeleniumSandbox:
 
     def generate_config(self, options):
         configFolder = os.path.join(self.work_folder, "suites", "config")
-        if 'sg_config__url' in options:
-            self.target_url = options['sg_config__url']
-        else:
-            self.target_url = None
+        if 'sg_config__url' in options and options['sg_config__url'] != self.target_url:
+            print "WARNING: overriding option sg_config__url of\n    %s\n  with\n    %s" % (options['sg_config__url'], self.target_url)
+        options['sg_config__url'] = self.target_url
 
         if os.path.exists(configFolder):
             configFile = open(os.path.join(configFolder, "config.xml"), "w")
@@ -350,8 +353,8 @@ class SeleniumSandbox:
             test_suite = os.path.join(self.work_folder, test_suite)
 
         if os.path.exists(test_suite):
-            self.subProc = subprocess.Popen(test_suite)
             code = -1
+            self.subProc = subprocess.Popen(test_suite)
             try:
                 code = self.subProc.wait()
             except (KeyboardInterrupt, SystemExit):
@@ -375,9 +378,30 @@ class SeleniumSandbox:
                 runs.append(run['id'])
         return runs
 
-    def execute_run(self, test_run):
+    def execute_run(self, test_run, commit=False):
         targets = []
         tests = {}
+
+        # @TODO: These settings should be obtained from the TestRail server.
+        # @FIXME: values are hardcoded for the moment.
+        testrail_statuses = {
+            0: 1,
+            1: 5,
+            -1: 6
+        }
+        testrail_os = {
+            "Windows": 10,
+            "Linux": 20,
+            "Darwin": 30, # a.k.a. OSX
+            "iOS": 40,
+        }
+        testrail_browsers = {
+            "Chrome": 10,
+            "Firefox": 20,
+            "FirefoxESR": 30,
+            "Safari": 40,
+        }
+
         if test_run in self.testrail_runs:
             targets = [test_run]
         elif test_run in self.testrail_plans:
@@ -395,48 +419,36 @@ class SeleniumSandbox:
                 else:
                     # tests[target][test['id']] = test['case_id']
                     tests[target][test['id']] = test
-        # ppjson(targets)
-        # print "=========================="
-        # ppjson(tests)
-        # print "=========================="
-        # ppjson(tests[3399])
-        # print "=========================="
-        # ppjson(tests[3399][150071])
-        # print "=========================="
 
-        # if not test_suite.endswith(self.command_file):
-        #     test_suite = os.path.join(test_suite, self.command_file)
-        # if not test_suite.startswith(self.work_folder):
-        #     test_suite = os.path.join(self.work_folder, test_suite)
+        netloc = ""
+        if self.target_url:
+            netloc = urlparse.urlparse(self.target_url).netloc
+
+        build_folder = os.path.join(
+            self.get_work_folder(),
+            "suites",
+            "build",
+            netloc,
+            datetime.datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss"))
+
         targets.sort()
         for target in targets:
-            print("INFO: Running TestRail test run: %s - %s" % (target, self.testrail_runs[target]['name']))
+            suite_id = self.testrail_runs[target]["suite_id"]
+            if suite_id not in self.testrail_suites:
+                self.testrail_suites[suite_id] = self.testrail.send_get('get_suite/%s' % suite_id)
+            print("INFO: Running TestRail test suite: %s - %s" % (
+                self.testrail_suites[suite_id]['id'],
+                self.testrail_suites[suite_id]['name']))
             # ppjson(tests[target])
             keys = tests[target].keys()
             keys.sort()
-            netloc = ""
-            if self.target_url:
-                netloc = urlparse.urlparse(self.target_url).netloc
 
-            build_folder = os.path.join(
-                self.get_work_folder(),
-                "suites",
-                "build",
-                netloc,
-                datetime.datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss"))
-            # if not os.path.exists(build_folder):
-            #     print "Build results will be located in folder %s" % build_folder
-                # os.makedirs(build_folder)
-            # print "------> %s" % build_folder
             results = {"results": []}
             for test in keys:
-                # print "%s " % type(test),
-                # print "target: %d (%s)" % (target, type(target))
-                # print "test: %d (%s)" % (test, type(test))
-                # ppjson(tests[target][test]['case_id'])
+
                 test_suite = self.testrail_available_cases[tests[target][test]['case_id']]
                 test_suite = os.path.join(test_suite, self.command_file)
-                # print '%s - %s' % (test, test_suite)
+
                 if os.path.exists(test_suite):
                     startTime = time.time()
                     stopTime = None
@@ -451,24 +463,25 @@ class SeleniumSandbox:
                         self.subProc.kill()
                         raise
                     if code == 0 or code == 1 or code == -1:
-                        status_id = 5
                         result = {
-                            'test_id': 150788,
-                            'status_id': status_id,
-                            'comment': 'from Automation on https://6-3-automation.shotgunstudio.com',
-                            'elapsed': '345s',
-                            'custom_os': [10],
-                            'custom_webbrowser': [20],
-                            'version': 'v6.3.0-dev (build cb789f8)'
+                            'case_id': tests[target][test]['case_id'],
+                            'status_id': testrail_statuses[code],
+                            'comment': "from Automation on %s" % self.target_url ,
+                            'custom_os': [testrail_os[platform.system()]],
+                            'custom_webbrowser': [testrail_browsers['Firefox']],
+                            'version': "v%s (build %s)" % (self.target_version_name, self.target_version_hash)
                         }
-                    elif code == -1:
-                        print "-----------------------------------> ABORT ABORT ABORT"
+                        if code == 0 or code == 1:
+                            result['elapsed'] = '%ds' % int(stopTime - startTime + 0.5)
+                        if code == -1:
+                            result['comment'] += " **Test aborted by user**"
+                        results['results'].append(result)
                     else:
-                        print "-----------------------------------> WTF!!!!!!!!!: %d" % code
-                    # return code
+                        raise Exception("Unexpected return code from Selenium: %d" % code)
                 else:
                     raise SuiteNotFound("Non existent test suite %s" % test_suite)
-            ppjson(results)
+            if commit:
+                res = self.testrail.send_post('add_results_for_cases/%s' % target, results)
 
     def signal_handler(self, sig, frm):
         sys.exit(1)
@@ -482,6 +495,8 @@ def main(argv):
         help="API key or credentials user:password or email:api-key (OPTIONAL)")
     parser.add_option("--testrail-run",
         help="TestRail run or plan to execute (OPTIONAL, requires --testrail-token)")
+    parser.add_option("--testrail-commit", action="store_true", dest="testrail_commit",
+        help="Output debugging information")
     parser.add_option("--suite",
         help="Test suite to execute (OPTIONAL)")
     parser.add_option("--work-folder",
@@ -503,6 +518,9 @@ def main(argv):
 
     if options.testrail_run is None:
         options.testrail_run = False
+
+    if options.testrail_commit is None:
+        options.testrail_commit = False
 
     if options.config_options is None:
         options.config_options = ""
@@ -576,12 +594,9 @@ def main(argv):
         os.makedirs(options.work_folder)
     sandbox.set_work_folder(options.work_folder)
 
-    print("INFO: Getting version of site %s" % shotgun_url)
-    (version_name, version_hash) = get_site_version(shotgun_url)
-    print("INFO:     Found version to be %s" % version_hash)
-
-    print("INFO: Getting Shotgun files from repo. Please wait")
-    sandbox.fetch_shotgun_files(version_hash)
+    print("INFO: Getting Shotgun files from repo for site %s. Please wait" % shotgun_url)
+    sandbox.fetch_shotgun_files(shotgun_url)
+    print("INFO:     Found version to be %s (%s)" % (sandbox.target_version_name, sandbox.target_version_hash))
     print("INFO:     Done getting files")
 
     print("INFO: Synchronizing filesystem with git files")
@@ -590,7 +605,6 @@ def main(argv):
 
     print("INFO: Generating config.xml")
     run_options = {
-        "sg_config__url": shotgun_url,
         "sg_config__check_shotgun_version": "true"
     }
     if len(options.config_options) > 0 and '=' in options.config_options:
@@ -610,7 +624,9 @@ def main(argv):
         elif options.testrail_run:
             if options.testrail_run in sandbox.testrail_plans:
                 print("INFO: Running TestRail test plan: %s - %s" % (options.testrail_run, sandbox.testrail_plans[options.testrail_run]['name']))
-            return_value = sandbox.execute_run(options.testrail_run)
+            else:
+                print("INFO: Running TestRail test run: %s - %s" % (options.testrail_run, sandbox.testrail_runs[options.testrail_run]['name']))
+            return_value = sandbox.execute_run(options.testrail_run, options.testrail_commit)
             print("INFO:     Test completed")
     except UnsupportedBranch as e:
         print("ERROR: This Shotgun site does not support Selenium automation!")
