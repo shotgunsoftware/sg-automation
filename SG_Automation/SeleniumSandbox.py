@@ -328,6 +328,9 @@ class SeleniumSandbox:
             print "WARNING: overriding option sg_config__url of\n    %s\n  with\n    %s" % (options['sg_config__url'], self.target_url)
         options['sg_config__url'] = self.target_url
 
+        if "sg_config__check_shotgun_version" not in options:
+            options["sg_config__check_shotgun_version"] = "true"
+
         if os.path.exists(configFolder):
             configFile = open(os.path.join(configFolder, "config.xml"), "w")
             configFile.write(
@@ -378,7 +381,7 @@ class SeleniumSandbox:
                 runs.append(run['id'])
         return runs
 
-    def execute_run(self, test_run, commit=False):
+    def execute_run(self, test_run, commit=False, run_all=False):
         targets = []
         tests = {}
 
@@ -412,13 +415,14 @@ class SeleniumSandbox:
         for target in targets:
             tests[target] = {}
             for test in self.testrail.send_get('get_tests/%s' % target):
-                if test['case_id'] not in self.testrail_available_cases:
-                    print "WARNING: skipping test case %s (%s) as it is not present in this codebase/version" % (
-                        test['case_id'], test['title']
-                    )
-                else:
-                    # tests[target][test['id']] = test['case_id']
-                    tests[target][test['id']] = test
+                if test['title'].startswith('[Automation] '):
+                    if test['case_id'] not in self.testrail_available_cases:
+                        print "WARNING: skipping test case %s (%s) as it is not present in this codebase/version" % (
+                            test['case_id'], test['title']
+                        )
+                    else:
+                        if run_all or test['status_id'] != 1:
+                            tests[target][test['id']] = test
 
         netloc = ""
         if self.target_url:
@@ -480,8 +484,8 @@ class SeleniumSandbox:
                         raise Exception("Unexpected return code from Selenium: %d" % code)
                 else:
                     raise SuiteNotFound("Non existent test suite %s" % test_suite)
-            if commit:
-                res = self.testrail.send_post('add_results_for_cases/%s' % target, results)
+            if commit and len(results['results']) > 0:
+                self.testrail.send_post('add_results_for_cases/%s' % target, results)
 
     def signal_handler(self, sig, frm):
         sys.exit(1)
@@ -497,6 +501,8 @@ def main(argv):
         help="TestRail run or plan to execute (OPTIONAL, requires --testrail-token)")
     parser.add_option("--testrail-commit", action="store_true", dest="testrail_commit",
         help="Output debugging information")
+    parser.add_option("--testrail-run-all", action="store_true", dest="testrail_run_all",
+        help="Run all the tests instead of only those that have not passed (OPTIONAL)")
     parser.add_option("--suite",
         help="Test suite to execute (OPTIONAL)")
     parser.add_option("--work-folder",
@@ -521,6 +527,9 @@ def main(argv):
 
     if options.testrail_commit is None:
         options.testrail_commit = False
+
+    if options.testrail_run_all is None:
+        options.testrail_run_all = False
 
     if options.config_options is None:
         options.config_options = ""
@@ -604,9 +613,7 @@ def main(argv):
     print("INFO:     Done synchronizing")
 
     print("INFO: Generating config.xml")
-    run_options = {
-        "sg_config__check_shotgun_version": "true"
-    }
+    run_options = {}
     if len(options.config_options) > 0 and '=' in options.config_options:
         for kv in options.config_options.split(","):
             (k, v) = kv.split("=")
@@ -626,7 +633,11 @@ def main(argv):
                 print("INFO: Running TestRail test plan: %s - %s" % (options.testrail_run, sandbox.testrail_plans[options.testrail_run]['name']))
             else:
                 print("INFO: Running TestRail test run: %s - %s" % (options.testrail_run, sandbox.testrail_runs[options.testrail_run]['name']))
-            return_value = sandbox.execute_run(options.testrail_run, options.testrail_commit)
+            if options.testrail_run_all:
+                print("INFO: Executing all of the tests regardless of their prior result")
+            else:
+                print("INFO: Executing only tests that have not been successful")
+            return_value = sandbox.execute_run(options.testrail_run, options.testrail_commit, options.testrail_run_all)
             print("INFO:     Test completed")
     except UnsupportedBranch as e:
         print("ERROR: This Shotgun site does not support Selenium automation!")
