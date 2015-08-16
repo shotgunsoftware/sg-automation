@@ -105,12 +105,12 @@ class SeleniumSandbox:
                 raise TestRailError('Project Shotgun cannot be found on TestRail')
             self.testrail_runs = self.get_testrail_runs()
             self.testrail_plans = self.get_testrail_plans()
+            self.testrail_suites = self.get_testrail_suites()
         self.debugging = debugging
         self.testrail_available_cases = {}
         self.target_url = None
         self.target_version_name = None
         self.target_version_hash = None
-        self.testrail_suites = {}
         self.user = self.get_elems("https://api.github.com/user")
 
     def set_work_folder(self, work_folder):
@@ -148,6 +148,13 @@ class SeleniumSandbox:
             for plan in self.testrail.send_get('get_plans/%d&is_completed=0' % self.testrail_project_id):
                 plans[plan['id']] = plan
         return plans
+
+    def get_testrail_suites(self):
+        suites = {}
+        if self.testrail_project_id:
+            for suite in self.testrail.send_get('get_suites/%d' % self.testrail_project_id):
+                suites[suite['id']] = suite
+        return suites
 
     def fetch_shotgun_files(self, target_url):
         self.target_url = target_url
@@ -422,6 +429,9 @@ class SeleniumSandbox:
         return False
 
     def execute_run(self, testrail_run, commit=False, run_all=False):
+        if not self.is_testrail_run(testrail_run):
+            raise TestRailRunInvalid('TestRail run %s does not exist' % testrail_run)
+
         targets = []
         tests = {}
 
@@ -622,9 +632,9 @@ def main(argv):
     signal.signal(signal.SIGINT, sandbox.signal_handler)
     print "INFO:     Connected to GitHub as user %s" % sandbox.user["login"]
 
-    if options.testrail_run and (
-            options.testrail_run not in sandbox.testrail_runs and
-            options.testrail_run not in sandbox.testrail_plans):
+    if options.testrail_run and not (
+        sandbox.is_testrail_run(options.testrail_run) or
+        sandbox.is_testrail_plan(options.testrail_run)):
         print("ERROR: Invalid TestRail run or plan: %s" % options.testrail_run)
         sys.exit(2)
         pass
@@ -669,15 +679,23 @@ def main(argv):
             return_value = sandbox.execute_suite(options.suite)
             print("INFO:     Test completed")
         elif options.testrail_run:
-            if options.testrail_run in sandbox.testrail_plans:
+            runs = []
+            if sandbox.is_testrail_plan(options.testrail_run):
+                runs = sandbox.get_testrail_runs_from_plan(options.testrail_run)
                 print("INFO: Using TestRail test plan: %s - %s" % (options.testrail_run, sandbox.testrail_plans[options.testrail_run]['name']))
-            else:
-                print("INFO: Using TestRail test run: %s - %s" % (options.testrail_run, sandbox.testrail_runs[options.testrail_run]['name']))
-            if options.testrail_run_all:
-                print("INFO: Executing all of the tests regardless of their prior result")
-            else:
-                print("INFO: Executing only tests that have not been successful")
-            return_value = sandbox.execute_run(options.testrail_run, options.testrail_commit, options.testrail_run_all)
+            elif sandbox.is_testrail_run(options.testrail_run):
+                plan_id = sandbox.testrail_runs[options.testrail_run]["plan_id"]
+                if plan_id:
+                    print("INFO: Using test run from TestRail test plan: %s - %s" % (plan_id, sandbox.testrail_plans[plan_id]['name']))
+                runs = [options.testrail_run]
+
+            for run in runs:
+                print("INFO: Using TestRail test run: %s - %s" % (run, sandbox.testrail_runs[run]['name']))
+                if options.testrail_run_all:
+                    print("INFO: Executing all of the tests regardless of their prior results")
+                else:
+                    print("INFO: Executing only tests that have not been successful")
+                return_value = sandbox.execute_run(run, options.testrail_commit, options.testrail_run_all)
             print("INFO:     Test completed")
     except UnsupportedBranch as e:
         print("ERROR: This Shotgun site does not support Selenium automation!")
