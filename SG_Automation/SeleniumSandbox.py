@@ -68,6 +68,12 @@ class TestRailRunInvalid(Exception):
     def __str__(self):
         return str(self.message)
 
+class TestRailPlanInvalid(Exception):
+    def __init__(self, message):
+        self.message = message
+    def __str__(self):
+        return str(self.message)
+
 class GitError(Exception):
     def __init__(self, message):
         self.message = message
@@ -381,7 +387,41 @@ class SeleniumSandbox:
                 runs.append(run['id'])
         return runs
 
-    def execute_run(self, test_run, commit=False, run_all=False):
+    def is_testrail_plan(self, testrail_plan):
+        if testrail_plan in self.testrail_plans:
+            return True
+        elif testrail_plan in self.testrail_runs:
+            return False
+        else:
+            try:
+                plan = self.testrail.send_get('get_plan/%s' % testrail_plan)
+                if plan['project_id'] == self.testrail_project_id:
+                    self.testrail_plans[run["id"]] = plan
+                    return True
+            except Exception:
+                raise TestRailPlanInvalid('TestRail plan %s does not exist' % testrail_plan)
+            else:
+                raise TestRailPlanInvalid('TestRail plan %s does not belong to project Shotgun' % testrail_plan)
+        return False
+
+    def is_testrail_run(self, testrail_run):
+        if testrail_run in self.testrail_runs:
+            return True
+        elif testrail_run in self.testrail_plans:
+            return False
+        else:
+            try:
+                run = self.testrail.send_get('get_run/%s' % testrail_run)
+                if run['project_id'] == self.testrail_project_id:
+                    self.testrail_runs[run["id"]] = run
+                    return True
+            except Exception:
+                raise TestRailRunInvalid('TestRail run %s does not exist' % testrail_run)
+            else:
+                raise TestRailRunInvalid('TestRail run %s does not belong to project Shotgun' % testrail_run)
+        return False
+
+    def execute_run(self, testrail_run, commit=False, run_all=False):
         targets = []
         tests = {}
 
@@ -405,12 +445,12 @@ class SeleniumSandbox:
             "Safari": 40,
         }
 
-        if test_run in self.testrail_runs:
-            targets = [test_run]
-        elif test_run in self.testrail_plans:
-            targets = self.get_testrail_runs_from_plan(test_run)
+        if testrail_run in self.testrail_runs:
+            targets = [testrail_run]
+        elif testrail_run in self.testrail_plans:
+            targets = self.get_testrail_runs_from_plan(testrail_run)
         else:
-            raise TestRailRunInvalid('TestRail run or plan %s does not exist' % test_run)
+            raise TestRailRunInvalid('TestRail run or plan %s does not exist' % testrail_run)
 
         for target in targets:
             tests[target] = {}
@@ -630,9 +670,9 @@ def main(argv):
             print("INFO:     Test completed")
         elif options.testrail_run:
             if options.testrail_run in sandbox.testrail_plans:
-                print("INFO: Running TestRail test plan: %s - %s" % (options.testrail_run, sandbox.testrail_plans[options.testrail_run]['name']))
+                print("INFO: Using TestRail test plan: %s - %s" % (options.testrail_run, sandbox.testrail_plans[options.testrail_run]['name']))
             else:
-                print("INFO: Running TestRail test run: %s - %s" % (options.testrail_run, sandbox.testrail_runs[options.testrail_run]['name']))
+                print("INFO: Using TestRail test run: %s - %s" % (options.testrail_run, sandbox.testrail_runs[options.testrail_run]['name']))
             if options.testrail_run_all:
                 print("INFO: Executing all of the tests regardless of their prior result")
             else:
