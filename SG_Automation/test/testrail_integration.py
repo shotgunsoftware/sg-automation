@@ -69,23 +69,28 @@ class TestPlansAndCases(unittest.TestCase):
 
     def test_id_is_invalid_run(self):
         cls = self.__class__
-        self.assertRaisesRegexp(SeleniumSandbox.TestRailRunInvalid, 'TestRail run 1 does not exist', cls.sandbox.is_testrail_run, 1)
+        # self.assertRaisesRegexp(SeleniumSandbox.TestRailRunInvalid, 'TestRail run 1 does not exist', cls.sandbox.is_testrail_run, 1)
+        self.assertFalse(cls.sandbox.is_testrail_run(1))
 
     def test_id_is_invalid_plan(self):
         cls = self.__class__
-        self.assertRaisesRegexp(SeleniumSandbox.TestRailPlanInvalid, 'TestRail plan 1 does not exist', cls.sandbox.is_testrail_plan, 1)
+        # self.assertRaisesRegexp(SeleniumSandbox.TestRailPlanInvalid, 'TestRail plan 1 does not exist', cls.sandbox.is_testrail_plan, 1)
+        self.assertFalse(cls.sandbox.is_testrail_plan(1))
 
     def test_id_is_maya_run(self):
         cls = self.__class__
-        self.assertRaisesRegexp(SeleniumSandbox.TestRailRunInvalid, 'TestRail run %d does not belong to project Shotgun' % cls.maya_run, cls.sandbox.is_testrail_run, cls.maya_run)
+        # self.assertRaisesRegexp(SeleniumSandbox.TestRailRunInvalid, 'TestRail run %d does not belong to project Shotgun' % cls.maya_run, cls.sandbox.is_testrail_run, cls.maya_run)
+        self.assertFalse(cls.sandbox.is_testrail_run(cls.maya_run))
 
     def test_id_is_maya_plan(self):
         cls = self.__class__
-        self.assertRaisesRegexp(SeleniumSandbox.TestRailPlanInvalid, 'TestRail plan %d does not belong to project Shotgun' % cls.maya_plan, cls.sandbox.is_testrail_plan, cls.maya_plan)
+        # self.assertRaisesRegexp(SeleniumSandbox.TestRailPlanInvalid, 'TestRail plan %d does not belong to project Shotgun' % cls.maya_plan, cls.sandbox.is_testrail_plan, cls.maya_plan)
+        self.assertFalse(cls.sandbox.is_testrail_plan(cls.maya_plan))
 
     def test_id_is_maya_plan_run(self):
         cls = self.__class__
-        self.assertRaisesRegexp(SeleniumSandbox.TestRailRunInvalid, 'TestRail run %d does not belong to project Shotgun' % cls.maya_plan_run, cls.sandbox.is_testrail_run, cls.maya_plan_run)
+        # self.assertRaisesRegexp(SeleniumSandbox.TestRailRunInvalid, 'TestRail run %d does not belong to project Shotgun' % cls.maya_plan_run, cls.sandbox.is_testrail_run, cls.maya_plan_run)
+        self.assertFalse(cls.sandbox.is_testrail_run(cls.maya_plan_run))
 
 if __name__ == '__main__':
     unittest.main()

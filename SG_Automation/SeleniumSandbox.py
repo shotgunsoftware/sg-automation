@@ -333,9 +333,6 @@ class SeleniumSandbox:
                     if os.path.exists(path):
                         statInfo = os.stat(path)
                         fileSha1 = hashlib.sha1("blob " + str(statInfo.st_size) + "\0" + open(path, "rb").read()).hexdigest()
-                        # @FIXME: DO NOT SUBMIT THE FOLLOWING TWO LINES !!! WORK CODE ONLY
-                        if os.path.join("suites", "runTest.command") in path:
-                           continue
                         if fileSha1 != sha:
                             print("updating file: " + path)
                             shutil.copy(self.get_git_object_file(sha), path)
@@ -381,6 +378,16 @@ class SeleniumSandbox:
         else:
             raise UnsupportedBranch("This site does not support Selenium tests")
 
+    def is_valid_suite(self, test_suite):
+        if not test_suite.endswith(self.command_file):
+            test_suite = os.path.join(test_suite, self.command_file)
+        if not test_suite.startswith(self.work_folder):
+            test_suite = os.path.join(self.work_folder, test_suite)
+
+        if os.path.exists(test_suite):
+            return True
+        else:
+            return False
 
     def execute_suite(self, test_suite):
         if not test_suite.endswith(self.command_file):
@@ -426,9 +433,10 @@ class SeleniumSandbox:
                     self.testrail_plans[run["id"]] = plan
                     return True
             except Exception:
-                raise TestRailPlanInvalid('TestRail plan %s does not exist' % testrail_plan)
-            else:
-                raise TestRailPlanInvalid('TestRail plan %s does not belong to project Shotgun' % testrail_plan)
+                pass
+            #     raise TestRailPlanInvalid('TestRail plan %s does not exist' % testrail_plan)
+            # else:
+            #     raise TestRailPlanInvalid('TestRail plan %s does not belong to project Shotgun' % testrail_plan)
         return False
 
     def is_testrail_run(self, testrail_run):
@@ -443,9 +451,10 @@ class SeleniumSandbox:
                     self.testrail_runs[run["id"]] = run
                     return True
             except Exception:
-                raise TestRailRunInvalid('TestRail run %s does not exist' % testrail_run)
-            else:
-                raise TestRailRunInvalid('TestRail run %s does not belong to project Shotgun' % testrail_run)
+                pass
+            #     raise TestRailRunInvalid('TestRail run %s does not exist' % testrail_run)
+            # else:
+            #     raise TestRailRunInvalid('TestRail run %s does not belong to project Shotgun' % testrail_run)
         return False
 
     def execute_run(self, testrail_run, commit=False, run_all=False):
@@ -527,18 +536,20 @@ def main(argv):
         help="API key or credentials user:password or token:x-oauth-basic")
     parser.add_option("--testrail-token",
         help="API key or credentials user:password or email:api-key (OPTIONAL)")
-    parser.add_option("--testrail-target",
-        help="TestRail run or plan to execute (OPTIONAL, requires --testrail-token)")
+    parser.add_option("--testrail-targets",
+        help="Comma-separated list of TestRail runs or plans to execute (OPTIONAL, requires --testrail-token)")
     parser.add_option("--testrail-commit", action="store_true", dest="testrail_commit",
         help="Output debugging information")
     parser.add_option("--testrail-run-all", action="store_true", dest="testrail_run_all",
         help="Run all the tests instead of only those that have not passed (OPTIONAL)")
-    parser.add_option("--suite",
-        help="Test suite to execute (OPTIONAL)")
+    parser.add_option("--suites",
+        help="Comma-separated list of path to Test suites to execute (OPTIONAL)")
     parser.add_option("--work-folder",
         help="Work folder. Will be created if required")
     parser.add_option("--config-options",
         help="Comma separated list of key=value to be added to the config.xml (OPTIONAL)")
+    parser.add_option("--no-sync", action="store_true", dest="no_sync",
+        help="The local work folder files will not be synchronized, usually for debugging puroses (OPTIONAL)")
     parser.add_option("-v", "--verbose", action="store_true", dest="verbose",
         help="Output debugging information")
     (options, args) = parser.parse_args()
@@ -546,14 +557,27 @@ def main(argv):
     if options.verbose is None:
         options.verbose = False
 
+    if options.no_sync is None:
+        options.no_sync = False
+
     if options.testrail_token is None:
         options.testrail_token = ''
 
-    if options.suite is None:
-        options.suite = False
+    if options.suites is None:
+        options.suites = []
+    else:
+        options.suites = options.suites.split(',')
 
-    if options.testrail_target is None:
-        options.testrail_target = False
+    if options.testrail_targets is None:
+        options.testrail_targets = []
+    else:
+        targets = options.testrail_targets.split(',')
+        options.testrail_targets = []
+        for target in targets:
+            if re.match('^[1-9][0-9]*$', target):
+                options.testrail_targets.append(int(target))
+            else:
+                parser.error("Target '%s' invalid. A testrail-targets argument must be a number." % target)
 
     if options.testrail_commit is None:
         options.testrail_commit = False
@@ -564,43 +588,25 @@ def main(argv):
     if options.config_options is None:
         options.config_options = ""
 
-    if (options.suite and options.testrail_target):
-        print "Options --suite and --testrail-run are mutually exclusive."
-        parser.print_help()
-        sys.exit(2)
+    if (options.suites and options.testrail_targets):
+        parser.error("Options --suites and --testrail-targets are mutually exclusive.")
 
-    if options.testrail_target:
-        if re.match('^[1-9][0-9]*$', options.testrail_target):
-            options.testrail_target = int(options.testrail_target)
-        else:
-            print "A testrail-run argument must be a number."
-            parser.print_help()
-            sys.exit(2)
-
-    if options.testrail_target and not options.testrail_token:
-        print "A testrail-run argument requires a valid TestRail token."
-        parser.print_help()
-        sys.exit(2)
+    if options.testrail_targets and not options.testrail_token:
+        parser.error("A testrail-targets argument requires a valid TestRail token.")
 
     if None in vars(options).values():
-        print "Missing required option for Shotgun API connection."
-        parser.print_help()
-        sys.exit(2)
+        parser.error("Missing required option for Shotgun API connection.")
 
     if len(args) != 1:
         parser.error("incorrect number of arguments")
-        parser.print_help()
-        sys.exit(2)
 
     if not (args[0].startswith("https://") or args[0].startswith("http://")):
-        print "scheme not indicated, assuming http"
+        print "INFO: protocol scheme not indicated, assuming http"
         args[0] = "http://%s" % args[0]
 
     url = urlparse.urlparse(args[0])
     if url.netloc == "":
         parser.error("need to specify a Shotgun site URL")
-        parser.print_help()
-        sys.exit(2)
 
     shotgun_url = "%s://%s" % (url.scheme, url.netloc)
 
@@ -612,12 +618,9 @@ def main(argv):
     signal.signal(signal.SIGINT, sandbox.signal_handler)
     print "INFO:     Connected to GitHub as user %s" % sandbox.user["login"]
 
-    if options.testrail_target and not (
-        sandbox.is_testrail_run(options.testrail_target) or
-        sandbox.is_testrail_plan(options.testrail_target)):
-        print("ERROR: Invalid TestRail run or plan: %s" % options.testrail_target)
-        sys.exit(2)
-        pass
+    for target in  options.testrail_targets:
+        if not (sandbox.is_testrail_run(target) or sandbox.is_testrail_plan(target)):
+            parser.error("ERROR: Invalid TestRail run or plan: %s" % target)
 
     if options.testrail_token and options.verbose:
         print "  Runs"
@@ -638,9 +641,16 @@ def main(argv):
     print("INFO:     Found version to be %s (%s)" % (sandbox.target_version_name, sandbox.target_version_hash))
     print("INFO:     Done getting files")
 
-    print("INFO: Synchronizing filesystem with git files")
-    sandbox.sync_filesystem()
-    print("INFO:     Done synchronizing")
+    if options.no_sync:
+        print("INFO: Local work folder files will not be updated.")
+    else:
+        print("INFO: Synchronizing filesystem with git files")
+        sandbox.sync_filesystem()
+        print("INFO:     Done synchronizing")
+
+    for suite in options.suites:
+        if not (sandbox.is_valid_suite(suite)):
+            parser.error("ERROR: Invalid TestRail run or plan: %s" % suite)
 
     print("INFO: Generating config.xml")
     run_options = {}
@@ -654,29 +664,36 @@ def main(argv):
     try:
         sandbox.generate_config(run_options)
 
-        if options.suite:
-            print("INFO: Running tests from %s" % options.suite)
-            return_value = sandbox.execute_suite(options.suite)
+        if options.suites:
+            for suite in options.suites:
+                print("INFO:")
+                print("INFO: Running tests from %s" % suite)
+                return_value = sandbox.execute_suite(suite)
             print("INFO:     Test completed")
-        elif options.testrail_target:
-            runs = []
-            if sandbox.is_testrail_plan(options.testrail_target):
-                runs = sandbox.get_testrail_runs_from_plan(options.testrail_target)
-                print("INFO: Using TestRail test plan: %s - %s" % (options.testrail_target, sandbox.testrail_plans[options.testrail_target]['name']))
-            elif sandbox.is_testrail_run(options.testrail_target):
-                plan_id = sandbox.testrail_runs[options.testrail_target]["plan_id"]
-                if plan_id:
-                    print("INFO: Using test run from TestRail test plan: %s - %s" % (plan_id, sandbox.testrail_plans[plan_id]['name']))
-                runs = [options.testrail_target]
+        elif options.testrail_targets:
+            for target in options.testrail_targets:
+                print("INFO:")
+                runs = []
+                if sandbox.is_testrail_plan(target):
+                    runs = sandbox.get_testrail_runs_from_plan(target)
+                    print("INFO: Using TestRail test plan: %s - %s" % (target, sandbox.testrail_plans[target]['name']))
+                elif sandbox.is_testrail_run(target):
+                    plan_id = sandbox.testrail_runs[target]["plan_id"]
+                    if plan_id:
+                        print("INFO: Using test run from TestRail test plan: %s - %s" % (plan_id, sandbox.testrail_plans[plan_id]['name']))
+                    runs = [target]
 
-            for run in runs:
-                print("INFO: Using TestRail test run: %s - %s" % (run, sandbox.testrail_runs[run]['name']))
-                if options.testrail_run_all:
-                    print("INFO: Executing all of the tests regardless of their prior results")
-                else:
-                    print("INFO: Executing only tests that have not been successful")
-                return_value = sandbox.execute_run(run, options.testrail_commit, options.testrail_run_all)
+                for run in runs:
+                    print("INFO: Using TestRail test run: %s - %s" % (run, sandbox.testrail_runs[run]['name']))
+                    if options.testrail_run_all:
+                        print("INFO: Executing all of the tests regardless of their prior results")
+                    else:
+                        print("INFO: Executing only tests that have not been successful")
+                    return_value = sandbox.execute_run(run, options.testrail_commit, options.testrail_run_all)
             print("INFO:     Test completed")
+        else:
+            # Not tests were run, which is okay
+            pass
     except UnsupportedBranch as e:
         print("ERROR: This Shotgun site does not support Selenium automation!")
         sys.exit(2)
