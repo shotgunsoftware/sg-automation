@@ -31,28 +31,10 @@ class MyPrefsGUI(QtGui.QDialog):
         self.dialog = Ui_Dialog()
         self.dialog.setupUi(self)
         self.dialog.browseButton.clicked.connect(self.browseDialog)
-        self.dialog.credsRadioButton.toggled.connect(self.radio_toggled)
         self.get_prefs()
 
-    def radio_toggled(self, value):
-        if self.dialog.credsRadioButton.isChecked():
-            self.dialog.userNameEdit.setEnabled(True)
-            self.dialog.userPasswordEdit.setEnabled(True)
-            self.dialog.apiKeyEdit.setEnabled(False)
-        else:
-            self.dialog.userNameEdit.setEnabled(False)
-            self.dialog.userPasswordEdit.setEnabled(False)
-            self.dialog.apiKeyEdit.setEnabled(True)
-
     def get_prefs(self):
-        password = self.prefs.get_pref("git_userpassword")
-        if password == "x-oauth-basic":
-            self.dialog.apiKeyRadioButton.setChecked(True)
-            self.dialog.apiKeyEdit.setText(self.prefs.get_pref("git_username"))
-        else:
-            self.dialog.credsRadioButton.setChecked(True)
-            self.dialog.userNameEdit.setText(self.prefs.get_pref("git_username"))
-            self.dialog.userPasswordEdit.setText(self.prefs.get_pref("git_userpassword"))
+        self.dialog.githubApiKeyEdit.setText(self.prefs.get_pref("github_api_key"))
 
         self.dialog.emailAddressEdit.setText(self.prefs.get_pref("testrail_email_address"))
         self.dialog.testrailApiKeyEdit.setText(self.prefs.get_pref("testrail_api_key"))
@@ -65,14 +47,11 @@ class MyPrefsGUI(QtGui.QDialog):
         self.dialog.sitesList.setText("\n".join(item for item in web_sites))
 
     def set_prefs(self):
-        if self.dialog.credsRadioButton.isChecked():
-            self.prefs.set_pref("git_username", self.dialog.userNameEdit.text())
-            self.prefs.set_pref("git_userpassword", self.dialog.userPasswordEdit.text())
-        else:
-            self.prefs.set_pref("git_username", self.dialog.apiKeyEdit.text())
-            self.prefs.set_pref("git_userpassword", "x-oauth-basic")
+        self.prefs.set_pref("github_api_key", self.dialog.githubApiKeyEdit.text())
+
         self.prefs.set_pref("testrail_email_address", self.dialog.emailAddressEdit.text())
         self.prefs.set_pref("testrail_api_key", self.dialog.testrailApiKeyEdit.text())
+
         work_folder = self.dialog.workFolderEdit.text()
         if not os.path.exists(work_folder):
             os.makedirs(work_folder)
@@ -166,10 +145,8 @@ class MyMainGUI(QtGui.QMainWindow):
     def validatePrefs(self):
         return_value = ""
         try:
-            git_creds = "%s:%s" % (
-                    self.prefs.get_pref("git_username"),
-                    self.prefs.get_pref("git_userpassword"),
-                )
+            git_creds = "%s:x-oauth-basic" % self.prefs.get_pref("github_api_key")
+
             testrail_creds = None
             if self.prefs.get_pref("testrail_email_address") and self.prefs.get_pref("testrail_api_key"):
                 testrail_creds = "%s:%s" % (
@@ -181,9 +158,12 @@ class MyMainGUI(QtGui.QMainWindow):
                 testrail_token=testrail_creds
             )
             self.sandbox.set_work_folder(self.prefs.get_pref("work_folder"))
-            message = 'Logged to GitHub as user %s, working out of folder %s' % (self.sandbox.get_user_login(), self.sandbox.get_work_folder())
-            if testrail_creds:
-                message += ' ALSO logged to TestRail'
+            github_user = self.sandbox.get_github_user()
+            testrail_user = self.sandbox.get_testrail_user()
+            message = 'Logged to GitHub as user %s' % github_user
+            if testrail_user:
+                message += ' - Logged to TestRail as user %s' % testrail_user
+            message += ' - Working out of folder %s' %self.sandbox.get_work_folder()
             self.consoleOutput(message + "\n")
             self.ui.statusbar.showMessage(message)
             seen = set()

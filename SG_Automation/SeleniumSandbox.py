@@ -118,18 +118,20 @@ class SeleniumSandbox:
         self.git_token = git_token
         if testrail_token:
             if ':' in  testrail_token:
-                (user, password) = testrail_token.split(':')
+                (testrail_email, testrail_api_key) = testrail_token.split(':')
             self.testrail = testrail.APIClient('http://meqa.autodesk.com')
-            self.testrail.user = user
-            self.testrail.password = password
-            self.testrail_project_id = None
+            self.testrail.user = testrail_email
+            self.testrail.password = testrail_api_key
             try:
-                for project in self.testrail.send_get('get_projects'):
-                    if project['name'] == 'Shotgun':
-                        self.testrail_project_id = project['id']
-                        break
+                self.testrail_user = self.testrail.send_get('get_user_by_email&email=%s' % testrail_email)
             except testrail.APIError:
                 raise  TestRailInvalidCredentials("Invalid credentials for TestRail")
+
+            self.testrail_project_id = None
+            for project in self.testrail.send_get('get_projects'):
+                if project['name'] == 'Shotgun':
+                    self.testrail_project_id = project['id']
+                    break
             if self.testrail_project_id is None:
                 raise TestRailShotgunProjectNotFound('Project Shotgun cannot be found on TestRail')
             self.testrail_runs = self.get_testrail_runs()
@@ -140,7 +142,7 @@ class SeleniumSandbox:
         self.target_url = None
         self.target_version_name = None
         self.target_version_hash = None
-        self.user = self.get_elems("https://api.github.com/user")
+        self.github_user = self.get_elems("https://api.github.com/user")
 
     def set_work_folder(self, work_folder):
         if not os.path.exists(work_folder):
@@ -161,8 +163,14 @@ class SeleniumSandbox:
     def get_work_folder(self):
         return self.work_folder
 
-    def get_user_login(self):
-        return self.user['login']
+    def get_github_user(self):
+        return self.github_user['login']
+
+    def get_testrail_user(self):
+        if self.testrail_user:
+            return self.testrail_user['name']
+        else:
+            return ""
 
     def get_testrail_runs(self):
         runs = {}
@@ -625,7 +633,9 @@ def main(argv):
         print "INFO: Connecting to GitHub"
     sandbox = SeleniumSandbox(options.git_token, options.testrail_token, options.verbose)
     signal.signal(signal.SIGINT, sandbox.signal_handler)
-    print "INFO:     Connected to GitHub as user %s" % sandbox.user["login"]
+    print "INFO:     Connected to GitHub as user %s" % sandbox.get_github_user()
+    if options.testrail_token:
+        print "INFO:     Connected to TestRail as user %s" % sandbox.get_testrail_user()
 
     for target in  options.testrail_targets:
         if not (sandbox.is_testrail_run(target) or sandbox.is_testrail_plan(target)):
