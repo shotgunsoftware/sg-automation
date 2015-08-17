@@ -1,0 +1,115 @@
+#!/bin/bash
+
+# This is the location of the root of the test hierarchy.
+BASE_DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
+
+if [ "${RUNTEST_NO_XTERM}" = "" ]; then
+	Red='\x1B[01;31m'
+	Green='\x1B[01;32m'
+	Reset='\x1B[00m'
+	ClearLine='\x1B[2K'
+	CarriageReturn='\r'
+else
+	Red=''
+	Green=''
+	Reset=''
+	ClearLine=''
+	CarriageReturn='\n'
+fi
+Check='\xE2\x9C\x93'
+Cross='\xE2\x9C\x97'
+
+BROWSER="${BROWSER:-firefox}"
+TIMESTAMP=`date '+%Y-%m-%d_%Hh%Mm%Ss'`
+GLOBAL_RETVAL=0
+
+runTest()
+{
+	# set -o xtrace
+	local TARGET_DIR=$1
+	local SITE_URL="${2:-http://vm.shotgun.local}"
+
+	if [ -e "${TARGET_DIR}/suite.html" ]; then
+		local SUITE_BUILD_FOLDER="${BUILD_FOLDER}${TARGET_DIR#$(echo "$BASE_DIR")}"
+		local BACKREF="$(echo ${TARGET_DIR#$(echo "${BASE_DIR}/")} | sed 's@[^/]*@..@g')"
+		mkdir -p "${SUITE_BUILD_FOLDER}"
+		cat "${BASE_DIR}"/../ide/user-extensions_*/user-extensions.js > "${SUITE_BUILD_FOLDER}/user-extensions.js"
+		sed 's@\(.\./\)*library@library@' "${TARGET_DIR}/suite.html" > "${SUITE_BUILD_FOLDER}/suite.html"
+		ln -fs "${BACKREF}/library" "${SUITE_BUILD_FOLDER}/library"
+		# If there is a steps folder, let's copy it too
+		if [ -e "${TARGET_DIR}/steps" ]; then
+			cp -R "${TARGET_DIR}/steps" "${SUITE_BUILD_FOLDER}"
+		fi
+		if [ "${RUNTEST_NO_XTERM}" = "" ]; then
+			echo -ne "  Running test ${TARGET_DIR}${CarriageReturn}"
+		fi
+		local EXPORT_PATH=${PATH}:/Applications/Firefox.app/Contents/MacOS
+		# PATH=${EXPORT_PATH} java -jar ${BASE_DIR}/../java/selenium-server-standalone-2.45.0.jar -userExtensions "${SUITE_BUILD_FOLDER}/user-extensions.js" -htmlSuite "*${BROWSER}" "${SITE_URL}" "${SUITE_BUILD_FOLDER}/suite.html" "${SUITE_BUILD_FOLDER}/report.html" 2> ${SUITE_BUILD_FOLDER}/stderr.txt > ${SUITE_BUILD_FOLDER}/stdout.txt
+		# local RETVAL=$?
+		# local RETVAL=$[ $RANDOM % 5 == 1 ]
+		local RETVAL=0;
+		# local RETVAL=1;
+		# sleep 1
+
+		if [ $RETVAL -eq 0 ] && [ -d ${TARGET_DIR}/refs ]; then
+			echo -ne "${ClearLine}  Comparing reference images${CarriageReturn}"
+			for refImg in $(cd ${TARGET_DIR}/refs; ls -1 *.png); do
+				mv -f "/tmp/${refImg}" "${SUITE_BUILD_FOLDER}/${refImg}"
+				# Disabling image file comparison for the time being.
+				# cmp -s "${SUITE_BUILD_FOLDER}/${refImg}" "${TARGET_DIR}/refs/${refImg}"
+				RETVAL=$?
+				if [ $RETVAL -ne 0 ]; then
+					echo -e "${ClearLine}${Red}  Reference image ${refImg} differs"
+					break
+				fi
+			done
+		fi
+
+		if [ ${RETVAL} -eq 0 ]; then
+			echo -e "${ClearLine}${Green}${Check} test ${TARGET_DIR} succeeded${Reset}"
+		else
+			GLOBAL_RETVAL=${RETVAL}
+			echo -e "${ClearLine}${Red}${Cross} test ${TARGET_DIR} failed${Reset}"
+			echo -e "    You can consult the build report: ${SUITE_BUILD_FOLDER}/report.html"
+		fi
+	else
+		for subFolder in ${TARGET_DIR}/*/runTest.command; do
+			runTest "`dirname "${subFolder}"`" "${SITE_URL}"
+		done
+	fi
+
+	if [ "${TARGET_DIR}" == "${TEST_DIR}" ] &&  [ "${PWD}" == "${HOME}" ]; then
+		read -p "Press [Enter] key to start continue..."
+	fi
+}
+
+# If the script has been called directly, and not from one of the subfolder.
+TEST_DIR="${TEST_DIR:-$(echo $BASE_DIR)}"
+
+# Obtaining the URL of the site we will be testing
+SHOTGUN_URL=$(grep -r sg_config__url ${BASE_DIR}/config | egrep '/config.defaults.xml:|/config.xml:' | sort | tail -1 | sed 's@.*//\(.*\)".*@\1@')
+
+# Copying the library and config files to the build folder.
+BUILD_FOLDER=${BUILD_FOLDER:-"${BASE_DIR}/build/${SHOTGUN_URL}/${TIMESTAMP}"}
+
+if [ ! -e "${BUILD_FOLDER}" ]; then
+	mkdir -p "${BUILD_FOLDER}"
+	echo "Build results will be located in folder ${BUILD_FOLDER}"
+fi
+unamestr=`uname`
+if [[ "$unamestr" == 'Darwin' ]]; then
+	ditto "${BASE_DIR}/library" "${BUILD_FOLDER}/library"
+	ditto "${BASE_DIR}/config" "${BUILD_FOLDER}/config"
+else
+	cp -R "${BASE_DIR}/library" "${BASE_DIR}/config" "${BUILD_FOLDER}"
+fi
+
+# Generating the config file with the current version hash
+CODE_VERSION=$(cd "${BASE_DIR}"; git rev-parse --short HEAD)
+CONFIG_GENERATED=${BUILD_FOLDER}/config/config.generated.xml
+echo -ne '<?xml version="1.0" encoding="UTF-8"?>\n<testdata>\n  <vars\n    sg_config__shotgun_version_build="' > ${CONFIG_GENERATED}
+echo -ne ${CODE_VERSION} >> ${CONFIG_GENERATED}
+echo -ne '"\n  />\n</testdata>' >> ${CONFIG_GENERATED}
+
+runTest "${TEST_DIR}" "${1:-http://vm.shotgun.local}"
+exit ${GLOBAL_RETVAL}
