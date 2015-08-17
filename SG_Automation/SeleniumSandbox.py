@@ -56,7 +56,13 @@ class GitHubError(Exception):
     def __str__(self):
         return str(self.message)
 
-class TestRailError(Exception):
+class TestRailInvalidCredentials(Exception):
+    def __init__(self, message):
+        self.message = message
+    def __str__(self):
+        return str(self.message)
+
+class TestRailShotgunProjectNotFound(Exception):
     def __init__(self, message):
         self.message = message
     def __str__(self):
@@ -117,12 +123,15 @@ class SeleniumSandbox:
             self.testrail.user = user
             self.testrail.password = password
             self.testrail_project_id = None
-            for project in self.testrail.send_get('get_projects'):
-                if project['name'] == 'Shotgun':
-                    self.testrail_project_id = project['id']
-                    break
+            try:
+                for project in self.testrail.send_get('get_projects'):
+                    if project['name'] == 'Shotgun':
+                        self.testrail_project_id = project['id']
+                        break
+            except testrail.APIError:
+                raise  TestRailInvalidCredentials("Invalid credentials for TestRail")
             if self.testrail_project_id is None:
-                raise TestRailError('Project Shotgun cannot be found on TestRail')
+                raise TestRailShotgunProjectNotFound('Project Shotgun cannot be found on TestRail')
             self.testrail_runs = self.get_testrail_runs()
             self.testrail_plans = self.get_testrail_plans()
             self.testrail_suites = self.get_testrail_suites()

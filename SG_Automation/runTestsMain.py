@@ -54,6 +54,9 @@ class MyPrefsGUI(QtGui.QDialog):
             self.dialog.userNameEdit.setText(self.prefs.get_pref("git_username"))
             self.dialog.userPasswordEdit.setText(self.prefs.get_pref("git_userpassword"))
 
+        self.dialog.emailAddressEdit.setText(self.prefs.get_pref("testrail_email_address"))
+        self.dialog.testrailApiKeyEdit.setText(self.prefs.get_pref("testrail_api_key"))
+
         work_folder = self.prefs.get_pref("work_folder") or os.path.expanduser("~/sg_automation")
         self.dialog.workFolderEdit.setText(work_folder)
         seen = set()
@@ -68,6 +71,8 @@ class MyPrefsGUI(QtGui.QDialog):
         else:
             self.prefs.set_pref("git_username", self.dialog.apiKeyEdit.text())
             self.prefs.set_pref("git_userpassword", "x-oauth-basic")
+        self.prefs.set_pref("testrail_email_address", self.dialog.emailAddressEdit.text())
+        self.prefs.set_pref("testrail_api_key", self.dialog.testrailApiKeyEdit.text())
         work_folder = self.dialog.workFolderEdit.text()
         if not os.path.exists(work_folder):
             os.makedirs(work_folder)
@@ -96,6 +101,7 @@ class MyMainGUI(QtGui.QMainWindow):
 
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
+        # self.aboutButton.clicked.connect(self.about)
         self.ui.runTestsButton.clicked.connect(self.runTests)
         self.ui.stopTestsButton.clicked.connect(self.stopTests)
 
@@ -165,10 +171,10 @@ class MyMainGUI(QtGui.QMainWindow):
                     self.prefs.get_pref("git_userpassword"),
                 )
             testrail_creds = None
-            if self.prefs.get_pref("testrail_username") and self.prefs.get_pref("testrail_userpassword"):
+            if self.prefs.get_pref("testrail_email_address") and self.prefs.get_pref("testrail_api_key"):
                 testrail_creds = "%s:%s" % (
-                    self.prefs.get_pref("testrail_username"),
-                    self.prefs.get_pref("testrail_userpassword"),
+                    self.prefs.get_pref("testrail_email_address"),
+                    self.prefs.get_pref("testrail_api_key"),
                 )
             self.sandbox = SeleniumSandbox.SeleniumSandbox(
                 git_token=git_creds,
@@ -202,6 +208,11 @@ class MyMainGUI(QtGui.QMainWindow):
         except SeleniumSandbox.WorkFolderDoesNotExists as e:
             self.consoleOutput("Error: %s\n" % e)
             return_value = "Please enter an existing folder as work folder\n"
+            self.consoleOutput(return_value)
+            self.ui.statusbar.showMessage(return_value)
+        except SeleniumSandbox.TestRailInvalidCredentials as e:
+            self.consoleOutput("Error: %s\n" % e)
+            return_value = "Please enter valid TestRail credentials or leave blank\n"
             self.consoleOutput(return_value)
             self.ui.statusbar.showMessage(return_value)
         return return_value
@@ -275,7 +286,7 @@ class MyMainGUI(QtGui.QMainWindow):
         self.process.start(os.path.join(self.currentLocation, "SeleniumSandbox.py"), [
             "--git-token", "%s:%s" % (self.prefs.get_pref("git_username"), self.prefs.get_pref("git_userpassword")),
             "--work-folder", self.prefs.get_pref("work_folder"),
-            "--suite", self.ui.targetList.currentText(),
+            "--suites", self.ui.targetList.currentText(),
             # "--config-options", "sg_config__timeout=30000",
             self.ui.siteList.currentText()
             ])
@@ -329,6 +340,19 @@ class MyMainGUI(QtGui.QMainWindow):
                     break
             else:
                 break
+
+    def about(self):
+        '''Popup a box with about message.'''
+        QMessageBox.about(self, "About PySide, Platform and the like",
+        """<b>Platform Details</b> v {}
+        <p>Copyright &copy; 2010 Joe Bloggs.
+        All rights reserved in accordance with
+        GPL v2 or later - NO WARRANTIES!
+        <p>This application can be used for
+        displaying platform details.
+        <p>Python {} - PySide version {} - Qt version {} on {}""".format(__version__,
+        platform.python_version(), PySide.__version__, PySide.QtCore.__version__,
+        platform.system()))
 
 def main():
     currentLocation = os.path.dirname(os.path.realpath(__file__))
