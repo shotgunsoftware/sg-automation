@@ -87,6 +87,26 @@ class UnsupportedBranch(Exception):
         return str(self.message)
 
 class SeleniumSandbox:
+    # @TODO: These settings should be obtained from the TestRail server.
+    # @FIXME: values are hardcoded for the moment.
+    testrail_statuses = {
+        0: 1,
+        1: 5,
+        -1: 6
+    }
+    testrail_os = {
+        "Windows": 10,
+        "Linux": 20,
+        "Darwin": 30, # a.k.a. OSX
+        "iOS": 40,
+    }
+    testrail_browsers = {
+        "Chrome": 10,
+        "Firefox": 20,
+        "FirefoxESR": 30,
+        "Safari": 40,
+    }
+
     def __init__(self, git_token, testrail_token=None, debugging=False):
         self.command_file = "runTest.command"
         self.git_token = git_token
@@ -432,47 +452,17 @@ class SeleniumSandbox:
         if not self.is_testrail_run(testrail_run):
             raise TestRailRunInvalid('TestRail run %s does not exist' % testrail_run)
 
-        targets = []
         tests = {}
 
-        # @TODO: These settings should be obtained from the TestRail server.
-        # @FIXME: values are hardcoded for the moment.
-        testrail_statuses = {
-            0: 1,
-            1: 5,
-            -1: 6
-        }
-        testrail_os = {
-            "Windows": 10,
-            "Linux": 20,
-            "Darwin": 30, # a.k.a. OSX
-            "iOS": 40,
-        }
-        testrail_browsers = {
-            "Chrome": 10,
-            "Firefox": 20,
-            "FirefoxESR": 30,
-            "Safari": 40,
-        }
-
-        if testrail_run in self.testrail_runs:
-            targets = [testrail_run]
-        elif testrail_run in self.testrail_plans:
-            targets = self.get_testrail_runs_from_plan(testrail_run)
-        else:
-            raise TestRailRunInvalid('TestRail run or plan %s does not exist' % testrail_run)
-
-        for target in targets:
-            tests[target] = {}
-            for test in self.testrail.send_get('get_tests/%s' % target):
-                if test['title'].startswith('[Automation] '):
-                    if test['case_id'] not in self.testrail_available_cases:
-                        print "WARNING: skipping test case %s (%s) as it is not present in this codebase/version" % (
-                            test['case_id'], test['title']
-                        )
-                    else:
-                        if run_all or test['status_id'] != 1:
-                            tests[target][test['id']] = test
+        for test in self.testrail.send_get('get_tests/%s' % testrail_run):
+            if test['title'].startswith('[Automation] '):
+                if test['case_id'] not in self.testrail_available_cases:
+                    print "WARNING: skipping test case %s (%s) as it is not present in this codebase/version" % (
+                        test['case_id'], test['title']
+                    )
+                else:
+                    if run_all or test['status_id'] != 1:
+                        tests[test["id"]] = test
 
         netloc = ""
         if self.target_url:
@@ -485,57 +475,47 @@ class SeleniumSandbox:
             netloc,
             datetime.datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss"))
 
-        targets.sort()
-        for target in targets:
-            suite_id = self.testrail_runs[target]["suite_id"]
-            if suite_id not in self.testrail_suites:
-                self.testrail_suites[suite_id] = self.testrail.send_get('get_suite/%s' % suite_id)
-            print("INFO: Running TestRail test suite: %s - %s" % (
-                self.testrail_suites[suite_id]['id'],
-                self.testrail_suites[suite_id]['name']))
-            # ppjson(tests[target])
-            keys = tests[target].keys()
-            keys.sort()
+        results = {"results": []}
+        for test in tests:
 
-            results = {"results": []}
-            for test in keys:
+            test_suite = self.testrail_available_cases[tests[test]['case_id']]
+            test_suite = os.path.join(test_suite, self.command_file)
 
-                test_suite = self.testrail_available_cases[tests[target][test]['case_id']]
-                test_suite = os.path.join(test_suite, self.command_file)
-
-                if os.path.exists(test_suite):
-                    startTime = time.time()
-                    stopTime = None
-                    self.subProc = subprocess.Popen(test_suite, env={"BUILD_FOLDER": build_folder})
-                    code = -1
-                    try:
-                        code = self.subProc.wait()
-                        stopTime = time.time()
-                    except (KeyboardInterrupt, SystemExit):
-                        self.subProc.kill()
-                    except Exception as e:
-                        self.subProc.kill()
-                        raise
-                    if code == 0 or code == 1 or code == -1:
-                        result = {
-                            'case_id': tests[target][test]['case_id'],
-                            'status_id': testrail_statuses[code],
-                            'comment': "from Automation on %s" % self.target_url ,
-                            'custom_os': [testrail_os[platform.system()]],
-                            'custom_webbrowser': [testrail_browsers['Firefox']],
-                            'version': "v%s (build %s)" % (self.target_version_name, self.target_version_hash)
-                        }
-                        if code == 0 or code == 1:
-                            result['elapsed'] = '%ds' % int(stopTime - startTime + 0.5)
-                        if code == -1:
-                            result['comment'] += " **Test aborted by user**"
-                        results['results'].append(result)
-                    else:
-                        raise Exception("Unexpected return code from Selenium: %d" % code)
+            if os.path.exists(test_suite):
+                startTime = time.time()
+                stopTime = None
+                self.subProc = subprocess.Popen(test_suite, env={"BUILD_FOLDER": build_folder})
+                code = -1
+                try:
+                    code = self.subProc.wait()
+                    stopTime = time.time()
+                except (KeyboardInterrupt, SystemExit):
+                    self.subProc.kill()
+                except Exception as e:
+                    self.subProc.kill()
+                    raise
+                if code == 0 or code == 1 or code == -1:
+                    result = {
+                        'case_id': tests[test]['case_id'],
+                        'status_id': SeleniumSandbox.testrail_statuses[code],
+                        'comment': "from Automation on %s" % self.target_url ,
+                        'custom_os': [SeleniumSandbox.testrail_os[platform.system()]],
+                        'custom_webbrowser': [SeleniumSandbox.testrail_browsers['Firefox']],
+                        'version': "v%s (build %s)" % (self.target_version_name, self.target_version_hash)
+                    }
+                    if code == 0 or code == 1:
+                        elapsed = int(stopTime - startTime + 0.5)
+                        if elapsed > 0:
+                            result['elapsed'] = '%ds' % elapsed
+                    if code == -1:
+                        result['comment'] += " **Test aborted by user**"
+                    results['results'].append(result)
                 else:
-                    raise SuiteNotFound("Non existent test suite %s" % test_suite)
-            if commit and len(results['results']) > 0:
-                self.testrail.send_post('add_results_for_cases/%s' % target, results)
+                    raise Exception("Unexpected return code from Selenium: %d" % code)
+            else:
+                raise SuiteNotFound("Non existent test suite %s" % test_suite)
+        if commit and len(results['results']) > 0:
+            self.testrail.send_post('add_results_for_cases/%s' % testrail_run, results)
 
     def signal_handler(self, sig, frm):
         sys.exit(1)
@@ -547,7 +527,7 @@ def main(argv):
         help="API key or credentials user:password or token:x-oauth-basic")
     parser.add_option("--testrail-token",
         help="API key or credentials user:password or email:api-key (OPTIONAL)")
-    parser.add_option("--testrail-run",
+    parser.add_option("--testrail-target",
         help="TestRail run or plan to execute (OPTIONAL, requires --testrail-token)")
     parser.add_option("--testrail-commit", action="store_true", dest="testrail_commit",
         help="Output debugging information")
@@ -572,8 +552,8 @@ def main(argv):
     if options.suite is None:
         options.suite = False
 
-    if options.testrail_run is None:
-        options.testrail_run = False
+    if options.testrail_target is None:
+        options.testrail_target = False
 
     if options.testrail_commit is None:
         options.testrail_commit = False
@@ -584,20 +564,20 @@ def main(argv):
     if options.config_options is None:
         options.config_options = ""
 
-    if (options.suite and options.testrail_run):
+    if (options.suite and options.testrail_target):
         print "Options --suite and --testrail-run are mutually exclusive."
         parser.print_help()
         sys.exit(2)
 
-    if options.testrail_run:
-        if re.match('^[1-9][0-9]*$', options.testrail_run):
-            options.testrail_run = int(options.testrail_run)
+    if options.testrail_target:
+        if re.match('^[1-9][0-9]*$', options.testrail_target):
+            options.testrail_target = int(options.testrail_target)
         else:
             print "A testrail-run argument must be a number."
             parser.print_help()
             sys.exit(2)
 
-    if options.testrail_run and not options.testrail_token:
+    if options.testrail_target and not options.testrail_token:
         print "A testrail-run argument requires a valid TestRail token."
         parser.print_help()
         sys.exit(2)
@@ -632,10 +612,10 @@ def main(argv):
     signal.signal(signal.SIGINT, sandbox.signal_handler)
     print "INFO:     Connected to GitHub as user %s" % sandbox.user["login"]
 
-    if options.testrail_run and not (
-        sandbox.is_testrail_run(options.testrail_run) or
-        sandbox.is_testrail_plan(options.testrail_run)):
-        print("ERROR: Invalid TestRail run or plan: %s" % options.testrail_run)
+    if options.testrail_target and not (
+        sandbox.is_testrail_run(options.testrail_target) or
+        sandbox.is_testrail_plan(options.testrail_target)):
+        print("ERROR: Invalid TestRail run or plan: %s" % options.testrail_target)
         sys.exit(2)
         pass
 
@@ -678,16 +658,16 @@ def main(argv):
             print("INFO: Running tests from %s" % options.suite)
             return_value = sandbox.execute_suite(options.suite)
             print("INFO:     Test completed")
-        elif options.testrail_run:
+        elif options.testrail_target:
             runs = []
-            if sandbox.is_testrail_plan(options.testrail_run):
-                runs = sandbox.get_testrail_runs_from_plan(options.testrail_run)
-                print("INFO: Using TestRail test plan: %s - %s" % (options.testrail_run, sandbox.testrail_plans[options.testrail_run]['name']))
-            elif sandbox.is_testrail_run(options.testrail_run):
-                plan_id = sandbox.testrail_runs[options.testrail_run]["plan_id"]
+            if sandbox.is_testrail_plan(options.testrail_target):
+                runs = sandbox.get_testrail_runs_from_plan(options.testrail_target)
+                print("INFO: Using TestRail test plan: %s - %s" % (options.testrail_target, sandbox.testrail_plans[options.testrail_target]['name']))
+            elif sandbox.is_testrail_run(options.testrail_target):
+                plan_id = sandbox.testrail_runs[options.testrail_target]["plan_id"]
                 if plan_id:
                     print("INFO: Using test run from TestRail test plan: %s - %s" % (plan_id, sandbox.testrail_plans[plan_id]['name']))
-                runs = [options.testrail_run]
+                runs = [options.testrail_target]
 
             for run in runs:
                 print("INFO: Using TestRail test run: %s - %s" % (run, sandbox.testrail_runs[run]['name']))
