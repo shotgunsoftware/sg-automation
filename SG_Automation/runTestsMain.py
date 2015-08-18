@@ -237,6 +237,9 @@ class MyMainGUI(QtGui.QMainWindow):
         if message is None:
             self.prefs = old_prefs
             self.validatePrefs()
+        else:
+            self.updateTestSuitesTargetList()
+            self.updateTestRailTargetList()
 
     _patternClearLine = re.compile("\x1B\[2K")
     _patternGreen = re.compile("\x1B\[01;32m(.*)\x1B\[00m")
@@ -421,7 +424,5 @@ if __name__ == "__main__":
 # TODO LIST:
 # @TODO: fix size of output to be bigger, and the tab section smaller
 # @TODO: ensure that the width of the dropdown is the same in both tabs
-# @TODO: add an about dialog
-# @TODO: rename Prefs to Preferences and ensure it is in the Application menu
 # @TODO: prevent update of files if not required.
 # @TODO: ensure that the stop tests button works
