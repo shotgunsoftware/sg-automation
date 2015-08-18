@@ -3,11 +3,13 @@
 import copy
 import fnmatch
 import os
+import platform
 import re
 import signal
 import subprocess
 import sys
 
+import PySide
 from PySide.QtCore import *
 from PySide.QtGui import *
 
@@ -16,6 +18,9 @@ from prefsGUI import *
 
 import SeleniumSandbox
 import appPrefs
+
+
+__version__ = "1.0"
 
 def locateFiles(pattern, root=os.curdir):
     '''Locate all files matching supplied filename pattern in and below
@@ -91,14 +96,25 @@ class MyMainGUI(QtGui.QMainWindow):
         self.process.readyRead.connect(self.dataReady)
         self.process.readyReadStandardError.connect(self.dataReadyErr)
 
+        # Menu setup
+        self.aboutAction = QtGui.QAction("&About", self, triggered=self.about)
+        # self.preferencesAction = QtGui.QAction("&Preferences", self, triggered=self.prefsDialog)
+        self.preferencesAction = QtGui.QAction("&Preferences", self)
+        self.preferencesAction.triggered.connect(self.updatePrefs)
+
+        self.helpMenu = self.menuBar().addMenu("")
+        self.helpMenu.addAction(self.aboutAction)
+        self.helpMenu.addSeparator()
+        self.helpMenu.addAction(self.preferencesAction)
+
         # Just to prevent accidentally running multiple times
         # Disable the button when process starts, and enable it when it finishes
-        self.process.started.connect(lambda: self.ui.actionPrefs.setEnabled(False))
+        self.process.started.connect(lambda: self.preferencesAction.setEnabled(False))
         self.process.started.connect(lambda: self.ui.siteList.setEnabled(False))
         self.process.started.connect(lambda: self.ui.runTestsButton.setEnabled(False))
         self.process.started.connect(lambda: self.ui.stopTestsButton.setEnabled(True))
 
-        self.process.finished.connect(lambda: self.ui.actionPrefs.setEnabled(True))
+        self.process.finished.connect(lambda: self.preferencesAction.setEnabled(True))
         self.process.finished.connect(lambda: self.ui.siteList.setEnabled(True))
         self.process.finished.connect(lambda: self.ui.runTestsButton.setEnabled(True))
         self.process.finished.connect(lambda: self.ui.stopTestsButton.setEnabled(False))
@@ -106,9 +122,6 @@ class MyMainGUI(QtGui.QMainWindow):
         self.process.finished.connect(lambda: self.consoleOutput("%s" % "<font color=\"green\">Completed</font>\n" if self.process.exitCode() == 0 else "<font color=\"red\">Failed !</font>\n"))
         self.process.finished.connect(self.updateTestSuitesTargetList)
         self.process.finished.connect(self.updateTestRailTargetList)
-
-        # Get the prefs panel
-        self.ui.actionPrefs.triggered.connect(self.updatePrefs)
 
         # Ensure that we control the opening of links in the text browswer
         self.ui.runOutput.anchorClicked.connect(self.openLinks)
@@ -274,7 +287,7 @@ class MyMainGUI(QtGui.QMainWindow):
     def runTests(self):
         current_tab_index = self.ui.tabTestModes.currentIndex()
         args = [
-            "--git-token", "%s:%s" % (self.prefs.get_pref("git_username"), self.prefs.get_pref("git_userpassword")),
+            "--git-token", "%s:x-oauth-basic" % self.prefs.get_pref("github_api_key"),
             "--work-folder", self.prefs.get_pref("work_folder"),
             self.ui.siteList.currentText()
         ]
@@ -310,7 +323,7 @@ class MyMainGUI(QtGui.QMainWindow):
 
     def getFiles(self):
         self.process.start(os.path.join(self.currentLocation, "SeleniumSandbox.py"), [
-            "--git-token", "%s:%s" % (self.prefs.get_pref("git_username"), self.prefs.get_pref("git_userpassword")),
+            "--git-token", "%s:x-oauth-basic" % self.prefs.get_pref("github_api_key"),
             "--work-folder", self.prefs.get_pref("work_folder"),
             # "--verbose",
             self.ui.siteList.currentText()
@@ -376,16 +389,19 @@ class MyMainGUI(QtGui.QMainWindow):
 
     def about(self):
         '''Popup a box with about message.'''
-        QMessageBox.about(self, "About PySide, Platform and the like",
-        """<b>Platform Details</b> v {}
-        <p>Copyright &copy; 2010 Joe Bloggs.
-        All rights reserved in accordance with
-        GPL v2 or later - NO WARRANTIES!
-        <p>This application can be used for
-        displaying platform details.
-        <p>Python {} - PySide version {} - Qt version {} on {}""".format(__version__,
-        platform.python_version(), PySide.__version__, PySide.QtCore.__version__,
-        platform.system()))
+        QMessageBox.about(self, "About ",
+        """\
+        <p>SG_Automation {}\
+        <p>Sandbox {}\
+        <p>Python {}\
+        <p>PySide version {}\
+        <p>Qt version {} on {}""".format(
+            __version__,
+            self.sandbox.__version__,
+            platform.python_version(),
+            PySide.__version__,
+            PySide.QtCore.__version__,
+            platform.system()))
 
 def main():
     currentLocation = os.path.dirname(os.path.realpath(__file__))

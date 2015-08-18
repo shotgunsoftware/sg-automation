@@ -99,6 +99,8 @@ class UnsupportedBranch(Exception):
         return str(self.message)
 
 class SeleniumSandbox:
+    __version__ = "1.0"
+
     # @TODO: These settings should be obtained from the TestRail server.
     # @FIXME: values are hardcoded for the moment.
     testrail_statuses = {
