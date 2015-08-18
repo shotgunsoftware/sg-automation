@@ -142,13 +142,13 @@ class MyMainGUI(QtGui.QMainWindow):
                 self.getFiles()
         self.ui.siteList.blockSignals(False)
 
-    def validatePrefs(self):
+    def validatePrefs(self, use_testrail=True):
         return_value = ""
         try:
             git_creds = "%s:x-oauth-basic" % self.prefs.get_pref("github_api_key")
 
             testrail_creds = None
-            if self.prefs.get_pref("testrail_email_address") and self.prefs.get_pref("testrail_api_key"):
+            if use_testrail and self.prefs.get_pref("testrail_email_address") and self.prefs.get_pref("testrail_api_key"):
                 testrail_creds = "%s:%s" % (
                     self.prefs.get_pref("testrail_email_address"),
                     self.prefs.get_pref("testrail_api_key"),
@@ -183,16 +183,19 @@ class MyMainGUI(QtGui.QMainWindow):
         except SeleniumSandbox.GitHubError as e:
             self.consoleOutput("Error: %s" % e)
             return_value = "Unable to login to GitHub. Please enter valid GitHub credentials\n"
-            self.consoleOutput(return_value)
-            self.ui.statusbar.showMessage(return_value)
         except SeleniumSandbox.WorkFolderDoesNotExists as e:
             self.consoleOutput("Error: %s\n" % e)
             return_value = "Please enter an existing folder as work folder\n"
+        except SeleniumSandbox.TestRailServerNotFound as e:
+            self.consoleOutput("Error: %s\n" % e)
+            return_value = "TestRail server not found. Disabling TestRail functionalities\n"
             self.consoleOutput(return_value)
-            self.ui.statusbar.showMessage(return_value)
+            return self.validatePrefs(False)
         except SeleniumSandbox.TestRailInvalidCredentials as e:
             self.consoleOutput("Error: %s\n" % e)
             return_value = "Please enter valid TestRail credentials or leave blank\n"
+
+        if return_value:
             self.consoleOutput(return_value)
             self.ui.statusbar.showMessage(return_value)
         return return_value

@@ -56,6 +56,12 @@ class GitHubError(Exception):
     def __str__(self):
         return str(self.message)
 
+class TestRailServerNotFound(Exception):
+    def __init__(self, message):
+        self.message = message
+    def __str__(self):
+        return str(self.message)
+
 class TestRailInvalidCredentials(Exception):
     def __init__(self, message):
         self.message = message
@@ -116,6 +122,11 @@ class SeleniumSandbox:
     def __init__(self, git_token, testrail_token=None, debugging=False):
         self.command_file = "runTest.command"
         self.git_token = git_token
+        self.testrail = None
+        self.testrail_user = None
+        self.testrail_runs = {}
+        self.testrail_plans = {}
+        self.testrail_suites = {}
         if testrail_token:
             if ':' in  testrail_token:
                 (testrail_email, testrail_api_key) = testrail_token.split(':')
@@ -126,6 +137,8 @@ class SeleniumSandbox:
                 self.testrail_user = self.testrail.send_get('get_user_by_email&email=%s' % testrail_email)
             except testrail.APIError:
                 raise  TestRailInvalidCredentials("Invalid credentials for TestRail")
+            except urllib2.URLError:
+                raise  TestRailServerNotFound("TestRail server not found. Enable VPN or use on the Autodesk Network.")
 
             self.testrail_project_id = None
             for project in self.testrail.send_get('get_projects'):
@@ -171,6 +184,9 @@ class SeleniumSandbox:
             return self.testrail_user['name']
         else:
             return ""
+
+    def is_using_testrail(self):
+        return self.testrail == None
 
     def get_testrail_runs(self):
         runs = {}
