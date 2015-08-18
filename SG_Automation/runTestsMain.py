@@ -423,6 +423,5 @@ if __name__ == "__main__":
 
 # TODO LIST:
 # @TODO: fix size of output to be bigger, and the tab section smaller
-# @TODO: ensure that the width of the dropdown is the same in both tabs
 # @TODO: prevent update of files if not required.
 # @TODO: ensure that the stop tests button works
