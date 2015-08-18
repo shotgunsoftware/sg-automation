@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>1201</width>
-    <height>733</height>
+    <height>735</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -86,11 +86,11 @@
      </widget>
     </item>
     <item row="5" column="0">
-     <widget class="QTabWidget" name="tabWidget">
+     <widget class="QTabWidget" name="tabTestModes">
       <property name="currentIndex">
        <number>0</number>
       </property>
-      <widget class="QWidget" name="tab">
+      <widget class="QWidget" name="tabTestSuites">
        <attribute name="title">
         <string>Test suites</string>
        </attribute>
@@ -98,7 +98,7 @@
         <item row="0" column="0">
          <layout class="QGridLayout" name="gridLayout_3">
           <item row="1" column="0">
-           <widget class="QComboBox" name="targetList"/>
+           <widget class="QComboBox" name="testSuitesTargetList"/>
           </item>
           <item row="2" column="0">
            <spacer name="verticalSpacer">
@@ -124,7 +124,10 @@
         </item>
        </layout>
       </widget>
-      <widget class="QWidget" name="tab_2">
+      <widget class="QWidget" name="tabTestRail">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
        <attribute name="title">
         <string>TestRail tests</string>
        </attribute>
@@ -132,7 +135,7 @@
         <item row="0" column="0">
          <layout class="QGridLayout" name="gridLayout_5">
           <item row="2" column="0">
-           <widget class="QCheckBox" name="checkBox">
+           <widget class="QCheckBox" name="checkRunAllTests">
             <property name="text">
              <string>Run all tests cases (by default only those that have not passed will be run)</string>
             </property>
@@ -146,14 +149,18 @@
            </widget>
           </item>
           <item row="3" column="0">
-           <widget class="QCheckBox" name="checkBox_2">
+           <widget class="QCheckBox" name="checkCommitResults">
             <property name="text">
              <string>Commit results to TestRail</string>
             </property>
            </widget>
           </item>
           <item row="1" column="0">
-           <widget class="QComboBox" name="comboBox_3"/>
+           <widget class="QComboBox" name="testRailTargetList">
+            <property name="insertPolicy">
+             <enum>QComboBox::InsertAtBottom</enum>
+            </property>
+           </widget>
           </item>
           <item row="4" column="0">
            <spacer name="verticalSpacer_2">

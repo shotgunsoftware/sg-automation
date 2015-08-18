@@ -103,8 +103,9 @@ class MyMainGUI(QtGui.QMainWindow):
         self.process.finished.connect(lambda: self.ui.runTestsButton.setEnabled(True))
         self.process.finished.connect(lambda: self.ui.stopTestsButton.setEnabled(False))
 
-        self.process.finished.connect(lambda: self.consoleOutput("%s" % "<font color=\"green\">Success</font>\n" if self.process.exitCode() == 0 else "<font color=\"red\">Failed !</font>\n"))
-        self.process.finished.connect(self.updateSuitesList)
+        self.process.finished.connect(lambda: self.consoleOutput("%s" % "<font color=\"green\">Completed</font>\n" if self.process.exitCode() == 0 else "<font color=\"red\">Failed !</font>\n"))
+        self.process.finished.connect(self.updateTestSuitesTargetList)
+        self.process.finished.connect(self.updateTestRailTargetList)
 
         # Get the prefs panel
         self.ui.actionPrefs.triggered.connect(self.updatePrefs)
@@ -113,11 +114,13 @@ class MyMainGUI(QtGui.QMainWindow):
         self.ui.runOutput.anchorClicked.connect(self.openLinks)
 
         self.ui.siteList.lineEdit().setPlaceholderText('Please enter the URL here')
-        self.ui.siteList.activated.connect(lambda: self.ui.targetList.setEnabled(False))
+        self.ui.siteList.activated.connect(lambda: self.ui.testSuitesTargetList.setEnabled(False))
+        self.ui.siteList.activated.connect(lambda: self.ui.testRailTargetList.setEnabled(False))
         self.ui.siteList.activated.connect(lambda: self.ui.runTestsButton.setEnabled(False))
         self.ui.siteList.currentIndexChanged.connect(self.validateURL)
         self.ui.siteList.editTextChanged.connect(lambda: self.ui.runTestsButton.setEnabled(False))
-        self.ui.siteList.editTextChanged.connect(lambda: self.ui.targetList.setEnabled(False))
+        self.ui.siteList.editTextChanged.connect(lambda: self.ui.testSuitesTargetList.setEnabled(False))
+        self.ui.siteList.editTextChanged.connect(lambda: self.ui.testRailTargetList.setEnabled(False))
 
 
     def __del__(self):
@@ -159,10 +162,12 @@ class MyMainGUI(QtGui.QMainWindow):
             )
             self.sandbox.set_work_folder(self.prefs.get_pref("work_folder"))
             github_user = self.sandbox.get_github_user()
-            testrail_user = self.sandbox.get_testrail_user()
             message = 'Logged to GitHub as user %s' % github_user
-            if testrail_user:
-                message += ' - Logged to TestRail as user %s' % testrail_user
+            if self.sandbox.is_using_testrail():
+                message += ' - Logged to TestRail as user %s' % self.sandbox.get_testrail_user()
+                self.ui.tabTestModes.setTabEnabled(1, True)
+            else:
+                self.ui.tabTestModes.setTabEnabled(1, False)
             message += ' - Working out of folder %s' %self.sandbox.get_work_folder()
             self.consoleOutput(message + "\n")
             self.ui.statusbar.showMessage(message)
@@ -229,6 +234,7 @@ class MyMainGUI(QtGui.QMainWindow):
 
     def consoleOutput(self, text, color=None):
         # Doing some filtering and markup
+        # text = text.replace(" ", u"\u00A0")
         text = self._patternClearLine.sub("", text)
         text = self._patternHttp.sub(r'<a href="\1">\1</a>', text)
         text = self._patternGreen.sub(r'<font color="green">\1</font>', text)
@@ -266,13 +272,33 @@ class MyMainGUI(QtGui.QMainWindow):
         self.consoleOutput(str(self.process.readAllStandardError()), "red")
 
     def runTests(self):
-        self.process.start(os.path.join(self.currentLocation, "SeleniumSandbox.py"), [
+        current_tab_index = self.ui.tabTestModes.currentIndex()
+        args = [
             "--git-token", "%s:%s" % (self.prefs.get_pref("git_username"), self.prefs.get_pref("git_userpassword")),
             "--work-folder", self.prefs.get_pref("work_folder"),
-            "--suites", self.ui.targetList.currentText(),
-            # "--config-options", "sg_config__timeout=30000",
             self.ui.siteList.currentText()
-            ])
+        ]
+
+        if current_tab_index == 0:
+            args += [
+                "--suites", self.ui.testSuitesTargetList.currentText()
+            ]
+        elif current_tab_index == 1:
+            run_id = self.ui.testRailTargetList.itemData(self.ui.testRailTargetList.currentIndex())
+            testrail_commit = self.ui.checkCommitResults.isChecked()
+            testrail_run_all = self.ui.checkRunAllTests.isChecked()
+            args += [
+                "--testrail-token", "%s:%s" %(self.prefs.get_pref("testrail_email_address"), self.prefs.get_pref("testrail_api_key")),
+                "--testrail-targets", "%d" % run_id
+            ]
+            if testrail_commit:
+                args.append("--testrail-commit")
+            if testrail_run_all:
+                args.append("--testrail-run-all")
+        else:
+            raise Exception("Unexpect Tab Index for tabTestModes")
+        # "--config-options", "sg_config__timeout=30000",
+        self.process.start(os.path.join(self.currentLocation, "SeleniumSandbox.py"), args)
 
     def openLinks(self, url):
         QDesktopServices.openUrl(url)
@@ -290,23 +316,47 @@ class MyMainGUI(QtGui.QMainWindow):
             self.ui.siteList.currentText()
             ])
 
-    def updateSuitesList(self):
+    def updateTestRailTargetList(self):
+        testrail_tests = {}
+        currentSelection = self.ui.testRailTargetList.currentText()
+
+        for plan_id, plan in self.sandbox.testrail_plans.iteritems():
+            testrail_tests["%s - %d" % (plan["name"], plan_id)] = plan_id
+
+        for run_id, run in self.sandbox.testrail_runs.iteritems():
+            testrail_tests["%s - %d" % (run["name"], run_id)] = run_id
+
+        keys = testrail_tests.keys()
+        keys.sort()
+
+        self.ui.testRailTargetList.clear()
+        for key in keys:
+            self.ui.testRailTargetList.addItem(key, testrail_tests[key])
+
+        if self.ui.testRailTargetList.count() > 0:
+            self.ui.testRailTargetList.setEnabled(True)
+            self.ui.testRailTargetList.setEnabled(True)
+            idx = self.ui.testRailTargetList.findText(currentSelection)
+            if idx != -1:
+                self.ui.testRailTargetList.setCurrentIndex(idx)
+
+    def updateTestSuitesTargetList(self):
         workfolderLocation = os.path.join(self.currentLocation, self.prefs.get_pref("work_folder"))
         fileList = locateFiles('runTest.command', workfolderLocation)
         suiteList = []
-        currentSuite = self.ui.targetList.currentText()
+        currentSelection = self.ui.testSuitesTargetList.currentText()
         suitePattern = re.compile("%s/(suites.*)/runTest.command" % workfolderLocation)
         for filename in fileList:
             suiteList.append(suitePattern.sub(r'\1', filename))
 
-        self.ui.targetList.clear()
-        self.ui.targetList.addItems(suiteList)
-        if self.ui.targetList.count() > 0:
-            self.ui.targetList.setEnabled(True)
-            self.ui.runTestsButton.setEnabled(True)
-            idx = self.ui.targetList.findText(currentSuite)
+        self.ui.testSuitesTargetList.clear()
+        self.ui.testSuitesTargetList.addItems(suiteList)
+        if self.ui.testSuitesTargetList.count() > 0:
+            self.ui.testSuitesTargetList.setEnabled(True)
+            self.ui.testSuitesTargetList.setEnabled(True)
+            idx = self.ui.testSuitesTargetList.findText(currentSelection)
             if idx != -1:
-                self.ui.targetList.setCurrentIndex(idx)
+                self.ui.testSuitesTargetList.setCurrentIndex(idx)
 
     def show(self):
         super(MyMainGUI, self).show()
@@ -342,12 +392,20 @@ def main():
     prefs = appPrefs.AppPrefs(os.path.expanduser("~/.sg_automation.json"))
     app = QtGui.QApplication(sys.argv)
     app.setStyle("plastique")
-    with open(os.path.join(currentLocation, "darkorange.stylesheet"), "r") as f:
-        read_data = f.read()
-        app.setStyleSheet(read_data)
+    # with open(os.path.join(currentLocation, "darkorange.stylesheet"), "r") as f:
+    #     read_data = f.read()
+    #     app.setStyleSheet(read_data)
     ui = MyMainGUI(prefs)
     ui.show()
     sys.exit(app.exec_())
 
 if __name__ == "__main__":
     main()
+
+# TODO LIST:
+# @TODO: fix size of output to be bigger, and the tab section smaller
+# @TODO: ensure that the width of the dropdown is the same in both tabs
+# @TODO: add an about dialog
+# @TODO: rename Prefs to Preferences and ensure it is in the Application menu
+# @TODO: prevent update of files if not required.
+# @TODO: ensure that the stop tests button works

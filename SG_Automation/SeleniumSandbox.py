@@ -119,7 +119,7 @@ class SeleniumSandbox:
         "Safari": 40,
     }
 
-    def __init__(self, git_token, testrail_token=None, debugging=False):
+    def __init__(self, git_token, testrail_token=None, debugging=False, testrail_server="http://meqa.autodesk.com", testrail_project="Shotgun"):
         self.command_file = "runTest.command"
         self.git_token = git_token
         self.testrail = None
@@ -130,7 +130,7 @@ class SeleniumSandbox:
         if testrail_token:
             if ':' in  testrail_token:
                 (testrail_email, testrail_api_key) = testrail_token.split(':')
-            self.testrail = testrail.APIClient('http://meqa.autodesk.com')
+            self.testrail = testrail.APIClient(testrail_server)
             self.testrail.user = testrail_email
             self.testrail.password = testrail_api_key
             try:
@@ -142,11 +142,11 @@ class SeleniumSandbox:
 
             self.testrail_project_id = None
             for project in self.testrail.send_get('get_projects'):
-                if project['name'] == 'Shotgun':
+                if project['name'] == testrail_project:
                     self.testrail_project_id = project['id']
                     break
             if self.testrail_project_id is None:
-                raise TestRailShotgunProjectNotFound('Project Shotgun cannot be found on TestRail')
+                raise TestRailShotgunProjectNotFound('Project %s cannot be found on TestRail' % testrail_project)
             self.testrail_runs = self.get_testrail_runs()
             self.testrail_plans = self.get_testrail_plans()
             self.testrail_suites = self.get_testrail_suites()
@@ -186,7 +186,7 @@ class SeleniumSandbox:
             return ""
 
     def is_using_testrail(self):
-        return self.testrail == None
+        return self.testrail != None
 
     def get_testrail_runs(self):
         runs = {}
@@ -671,7 +671,7 @@ def main(argv):
         os.makedirs(options.work_folder)
     sandbox.set_work_folder(options.work_folder)
 
-    print("INFO: Getting Shotgun files from repo for site %s. Please wait" % shotgun_url)
+    print("INFO: Getting Shotgun files from repo for site  %s ... Please wait" % shotgun_url)
     sandbox.fetch_shotgun_files(shotgun_url)
     print("INFO:     Found version to be %s (%s)" % (sandbox.target_version_name, sandbox.target_version_hash))
     print("INFO:     Done getting files")
