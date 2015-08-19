@@ -292,6 +292,7 @@ class MyMainGUI(QtGui.QMainWindow):
         args = [
             "--git-token", "%s:x-oauth-basic" % self.prefs.get_pref("github_api_key"),
             "--work-folder", self.prefs.get_pref("work_folder"),
+            "--no-fetch", "--no-sync",
             self.ui.siteList.currentText()
         ]
 
@@ -327,6 +328,7 @@ class MyMainGUI(QtGui.QMainWindow):
     def getFiles(self):
         self.process.start(os.path.join(self.currentLocation, "SeleniumSandbox.py"), [
             "--git-token", "%s:x-oauth-basic" % self.prefs.get_pref("github_api_key"),
+            # "--no-fetch", "--no-sync",
             "--work-folder", self.prefs.get_pref("work_folder"),
             # "--verbose",
             self.ui.siteList.currentText()
@@ -422,6 +424,4 @@ if __name__ == "__main__":
     main()
 
 # TODO LIST:
-# @TODO: fix size of output to be bigger, and the tab section smaller
-# @TODO: prevent update of files if not required.
 # @TODO: ensure that the stop tests button works

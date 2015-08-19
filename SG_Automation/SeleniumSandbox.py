@@ -38,6 +38,25 @@ def get_site_version(url):
     version_hash = pattern.group(2)
     return (version_name, version_hash)
 
+def locateFiles(pattern, root=os.curdir):
+    '''Locate all files matching supplied filename pattern in and below
+    supplied root directory.'''
+    pattern = re.compile(pattern)
+    for path, dirs, files in os.walk(os.path.abspath(root)):
+        filenames = [f for f in files if pattern.match(f)]
+        for filename in filenames:
+            yield os.path.join(path, filename)
+
+def locateDirs(pattern, root=os.curdir):
+    '''Locate all folders matching supplied filename pattern in and below
+    supplied root directory.'''
+    pattern = re.compile(pattern)
+    for path, dirs, files in os.walk(os.path.abspath(root)):
+        dirnames = [d for d in dirs if pattern.match(d)]
+        for dirname in dirnames:
+            yield os.path.join(path, dirname)
+
+
 class SuiteNotFound(Exception):
     def __init__(self, message):
         self.message = message
@@ -153,11 +172,26 @@ class SeleniumSandbox:
             self.testrail_plans = self.get_testrail_plans()
             self.testrail_suites = self.get_testrail_suites()
         self.debugging = debugging
-        self.testrail_available_cases = {}
+        self.available_cases = {}
+        self.available_suites = {}
         self.target_url = None
         self.target_version_name = None
         self.target_version_hash = None
+        self.shotgun_version = None
         self.github_user = self.get_elems("https://api.github.com/user")
+
+    def update_targets(self):
+        self.available_suites = {}
+        for target in locateFiles(self.command_file, self.work_folder):
+            key = target[len(self.work_folder)+1:]
+            key = key[:-len(self.command_file)-1]
+            self.available_suites[key] = target
+
+        self.available_cases = {}
+        for target in locateDirs("^C[0-9]+$", self.work_folder):
+            case_id = os.path.basename(target)
+            case_id = int(case_id.lstrip('C'))
+            self.available_cases[case_id] = target
 
     def set_work_folder(self, work_folder):
         if not os.path.exists(work_folder):
@@ -211,16 +245,18 @@ class SeleniumSandbox:
                 suites[suite['id']] = suite
         return suites
 
-    def fetch_shotgun_files(self, target_url):
+    def get_target_version(self, target_url):
         self.target_url = target_url
         (self.target_version_name, self.target_version_hash) = get_site_version(target_url)
         self.shotgun_version = self.get_tree(self.target_version_hash)["sha"]
+
+    def fetch_shotgun_files(self, target_url):
+        self.get_target_version(target_url)
         head_file = open(self.git_folder + os.path.sep + "HEAD", "w")
         head_file.write("%s\n" % self.shotgun_version)
         head_file.close()
 
-        self.selenium_version = self.find_tree(self.shotgun_version, "test/selenium")
-        self.fetch_tree(self.selenium_version)
+        self.fetch_tree(self.find_tree(self.shotgun_version, "test/selenium"))
         print(".")
 
     def get_elems(self, url):
@@ -320,9 +356,10 @@ class SeleniumSandbox:
                 raise Exception("Do not know how to handle object type %s for object %s" % (elem["type"], elem["path"]))
 
     def sync_filesystem(self, sha=None, prefix=None):
+        update_targets = False
         if sha is None:
-            sha = self.selenium_version
-            self.testrail_available_cases = {}
+            sha = self.find_tree(self.shotgun_version, "test/selenium")
+            update_targets = True
 
         tree = self.get_tree(sha)
 
@@ -352,11 +389,6 @@ class SeleniumSandbox:
             path = prefix + elem["path"]
             sha = elem["sha"]
             if elem["type"] == "tree":
-                is_case = re.match('^C([0-9]+)$', elem["path"])
-                # If it is a folder matching a test case ID, and it is in test_rail
-                # @FIXME: this is a very brittle test...
-                if is_case and path.startswith(os.path.join(self.work_folder, "suites", "test_rail", "")):
-                    self.testrail_available_cases[int(is_case.group(1))] = path
                 if not os.path.exists(path):
                     print("creating folder: " + path)
                     os.mkdir(path)
@@ -386,6 +418,8 @@ class SeleniumSandbox:
                     raise Exception("Unable to process %s, do not know how to handle mode %s." % (path, mode))
             else:
                 raise Exception("Do not know how to handle object type %s for object %s" % (elem["type"], elem["path"]))
+        if update_targets:
+            self.update_targets()
 
     def generate_config(self, options):
         configFolder = os.path.join(self.work_folder, "suites", "config")
@@ -414,25 +448,13 @@ class SeleniumSandbox:
             raise UnsupportedBranch("This site does not support Selenium tests")
 
     def is_valid_suite(self, test_suite):
-        if not test_suite.endswith(self.command_file):
-            test_suite = os.path.join(test_suite, self.command_file)
-        if not test_suite.startswith(self.work_folder):
-            test_suite = os.path.join(self.work_folder, test_suite)
-
-        if os.path.exists(test_suite):
-            return True
-        else:
-            return False
+        return test_suite in self.available_suites
 
     def execute_suite(self, test_suite):
-        if not test_suite.endswith(self.command_file):
-            test_suite = os.path.join(test_suite, self.command_file)
-        if not test_suite.startswith(self.work_folder):
-            test_suite = os.path.join(self.work_folder, test_suite)
 
-        if os.path.exists(test_suite):
+        if self.is_valid_suite(test_suite):
             code = -1
-            self.subProc = subprocess.Popen(test_suite)
+            self.subProc = subprocess.Popen(self.available_suites[test_suite])
             try:
                 code = self.subProc.wait()
             except (KeyboardInterrupt, SystemExit):
@@ -500,7 +522,7 @@ class SeleniumSandbox:
 
         for test in self.testrail.send_get('get_tests/%s' % testrail_run):
             if test['title'].startswith('[Automation] '):
-                if test['case_id'] not in self.testrail_available_cases:
+                if test['case_id'] not in self.available_cases:
                     print "WARNING: skipping test case %s (%s) as it is not present in this codebase/version" % (
                         test['case_id'], test['title']
                     )
@@ -522,7 +544,7 @@ class SeleniumSandbox:
         results = {"results": []}
         for test in tests:
 
-            test_suite = self.testrail_available_cases[tests[test]['case_id']]
+            test_suite = self.available_cases[tests[test]['case_id']]
             test_suite = os.path.join(test_suite, self.command_file)
 
             if os.path.exists(test_suite):
@@ -585,6 +607,8 @@ def main(argv):
         help="Comma separated list of key=value to be added to the config.xml (OPTIONAL)")
     parser.add_option("--no-sync", action="store_true", dest="no_sync",
         help="The local work folder files will not be synchronized, usually for debugging puroses (OPTIONAL)")
+    parser.add_option("--no-fetch", action="store_true", dest="no_fetch",
+        help="The git files are not updated from GitHub, usually for debugging puroses (OPTIONAL)")
     parser.add_option("-v", "--verbose", action="store_true", dest="verbose",
         help="Output debugging information")
     (options, args) = parser.parse_args()
@@ -594,6 +618,9 @@ def main(argv):
 
     if options.no_sync is None:
         options.no_sync = False
+
+    if options.no_fetch is None:
+        options.no_fetch = False
 
     if options.testrail_token is None:
         options.testrail_token = ''
@@ -673,13 +700,18 @@ def main(argv):
         os.makedirs(options.work_folder)
     sandbox.set_work_folder(options.work_folder)
 
-    print("INFO: Getting Shotgun files from repo for site  %s ... Please wait" % shotgun_url)
-    sandbox.fetch_shotgun_files(shotgun_url)
-    print("INFO:     Found version to be %s (%s)" % (sandbox.target_version_name, sandbox.target_version_hash))
-    print("INFO:     Done getting files")
+    if options.no_fetch:
+        print("INFO: not fetching files from repo")
+        sandbox.get_target_version(shotgun_url)
+    else:
+        print("INFO: Getting Shotgun files from repo for site  %s ... Please wait" % shotgun_url)
+        sandbox.fetch_shotgun_files(shotgun_url)
+        print("INFO:     Found version to be %s (%s)" % (sandbox.target_version_name, sandbox.target_version_hash))
+        print("INFO:     Done getting files")
 
     if options.no_sync:
         print("INFO: Local work folder files will not be updated.")
+        sandbox.update_targets()
     else:
         print("INFO: Synchronizing filesystem with git files")
         sandbox.sync_filesystem()
@@ -687,19 +719,20 @@ def main(argv):
 
     for suite in options.suites:
         if not (sandbox.is_valid_suite(suite)):
-            parser.error("ERROR: Invalid TestRail run or plan: %s" % suite)
+            parser.error("ERROR: Invalid test suite: %s" % suite)
 
-    print("INFO: Generating config.xml")
-    run_options = {}
-    if len(options.config_options) > 0 and '=' in options.config_options:
-        for kv in options.config_options.split(","):
-            (k, v) = kv.split("=")
-            run_options[k] = v
-            if options.verbose:
-                print("INFO:     Adding config options %s=%s to run config" % (k, v))
 
     try:
-        sandbox.generate_config(run_options)
+        if options.suites or options.testrail_targets:
+            print("INFO: Generating config.xml")
+            run_options = {}
+            if len(options.config_options) > 0 and '=' in options.config_options:
+                for kv in options.config_options.split(","):
+                    (k, v) = kv.split("=")
+                    run_options[k] = v
+                    if options.verbose:
+                        print("INFO:     Adding config options %s=%s to run config" % (k, v))
+            sandbox.generate_config(run_options)
 
         if options.suites:
             for suite in options.suites:

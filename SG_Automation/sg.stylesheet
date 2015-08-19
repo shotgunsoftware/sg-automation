@@ -1,149 +1,154 @@
-/*
- Copyright (c) 2014 Shotgun Software Inc.
- 
- CONFIDENTIAL AND PROPRIETARY
- 
- This work is provided "AS IS" and subject to the Shotgun Pipeline Toolkit
- Source Code License included in this distribution package. See LICENSE.
- By accessing, using, copying or modifying this work you indicate your
- agreement to the Shotgun Pipeline Toolkit Source Code License. All rights
- not expressly granted therein are reserved by Shotgun Software Inc.
-*/
-
-/*
+/* 
 Make sure standard dialogs and button boxes
 Will have the "Do it" button on the far right
 */
 QDialogButtonBox {
     button-layout: 3;
 }
-
-/*
-Make the line edit looks like a QLabel 
-when not in edit mode 
-*/
-EntityLineWidget {
-    border: none;
-    background: #424242;
-    font-style: normal;
-    font-weight: bold;
-}
-
-/*
-In edit mode, show it is a QLineEdit if it is not read only
-*/
-EntityLineWidget:focus:!read-only {
-    border: 2px solid #2C93E2;
-    border-radius: 2px;
-    background: none;
-    font-style: normal;
-    font-weight: normal;
-}
-
-/*
-When not in edit and the value is empty or not valid
-Make it SG red
-*/
-EntityLineWidget:!focus[valid="false"] {
-    color: #FC6246;
-    font-style: italic;
-}
-
-
-/* Thin progress bar on the main window
-*/
-QProgressBar#progress_bar {
-     border: 1px none grey;
-     text-align: center;
- }
-
-QProgressBar::chunk {
-    background-color: #2C93E2;
-}
-
 /*
 Drop area style : big font, and a dashed outline
 */
-QLabel#drop_area_label {
+DropAreaLabel {
     border: 2px dashed grey;
     border-radius: 4px;
     font-size: 50px;
-    font-style: bold;
+    font-weight: bold;
+    background-color: #2B2B2B;
+}
+/*
+Highlight the drop area when something is dragged over
+*/
+DropAreaLabel[dragging="true"] {
+    border: 2px dashed white;
+}
+/*
+Dark background for places where delivery items are displayed
+*/
+DropAreaScrollArea {
+    background-color: #2B2B2B;
+}
+QFrame#deliveries_areas {
+    background-color: #2B2B2B;
+}
+DeliveryItemsArea {
     background-color: #2B2B2B;
 }
 
-QFrame#SequenceCard, #CutCard, #CutDiffCard {
-    border: 2px solid black;
+/*
+If we set the border to none, the highlight below does not work
+in some cases : cheat by making the same color as the dialog
+*/
+DropAreaScrollArea[dragging="false"] {
+    border: 2px solid #404040;
 }
 
 /*
-QFrame:!focus#SequenceCard {
-    border-color: red;
-}
-QFrame#SequenceCard[selected="true"] {
-    border-color: #2C93E2;
-    background-color: orange;
-}
+Highlight the drop area when something is dragged over
 */
+DropAreaScrollArea[dragging="true"] {
+    border: 2px dashed white;
+}
+/*
+Highlight that the clickable frame is indeed clickable
+*/
+ClickableFrame:hover {
+    background: #565656;
+}
+/*
+Make the auto ingest start button SG blue
+*/
+QPushButton#start_auto_ingest_button {
+    background: #2C93E2;
+}
+/*
+Titles on
+*/
+#details_page > #title_label {
+    font-size : 14px;
+}
+#delivery_details_page #delivery_details_title_label {
+    font-size : 14px;
+}
+/*
+Pending / Completed separators
+*/
+QLabel#pending_label, QLabel#completed_label {
+    border: 1px none black;
+    font-size : 14px;
+    background: #606060;
+    min-height: 30px;
+}
 
 /*
-Cut summary view mode buttons, add a blue underline
-when they are checked
+Border for the delivery items
 */
-QAbstractButton#new_select_button:checked,
-    #cut_change_select_button:checked,
-    #omitted_select_button:checked,
-    #reinstated_select_button:checked,
-    #rescan_select_button:checked,
-    #total_button:checked {
-    color: #2C93E2;
-    border-top: 2px none #2C93E2;
-    border-bottom: 2px solid #2C93E2;
+DeliveryItemWidget {
+    border: 1px none black;
+    border-radius: 2px;
+    background-color: #525252;
+}
+DeliveryItemWidget #title_label {
+    font-size: 13px;
+    font-weight: bold;
+}
+DeliveryItemWidget #title_label2 {
+    font-size: 11px;
+}
+DeliveryItemWidget #details_label {
+    font-size: 10px;
+}
+DeliveryItemWidget[state="completed"] #details_label,
+DeliveryItemWidget[state="partially_completed"] #details_label,
+DeliveryItemWidget[state="error"] #details_label {
+    font-style: italic;
+}
+/* No outline on the arrow button */
+DeliveryItemWidget QPushButton {
     outline: none;
 }
-/*
-Cut summary view mode buttons, disable regular
-press style
-*/
-QAbstractButton#new_select_button:pressed,
-    #cut_change_select_button:pressed,
-    #omitted_select_button:pressed,
-    #reinstated_select_button:pressed,
-    #rescan_select_button:pressed,
-    #total_button:pressed {
+/* ETA label is SG blue */
+DeliveryItemWidget #eta_label {
     color: #2C93E2;
-    border-top: 2px none #2C93E2;
-    border-bottom: 2px solid #2C93E2;
-    outline: none;
 }
 /*
-Cut summary view mode buttons, disable regular
-press style
+Border for the delivery items when they are selected
+and blueish background
 */
-QAbstractButton#new_select_button:hover,
-    #cut_change_select_button:hover,
-    #omitted_select_button:hover,
-    #reinstated_select_button:hover,
-    #rescan_select_button:hover,
-    #total_button:hover {
-    color: #2C93E2;
-    font-style: bold;
+DeliveryItemWidget[selected="true"] {
+    border: 1px solid #2C93E2;
+    background-color: rgba(44, 147, 226, 25%)
+}
+
+/*
+Delivery items could be styled depending on their state
+DeliveryItemWidget[state="bootstrap"] #title_label,
+DeliveryItemWidget[state="bootstrap"] #title_label2,
+DeliveryItemWidget[state="running"] #title_label,
+DeliveryItemWidget[state="running"] #title_label2 {
+    color : #2C93E2;
+}
+DeliveryItemWidget[state="queued"] #title_label,
+DeliveryItemWidget[state="queued"] #title_label2,
+DeliveryItemWidget[state="warning"] #title_label,
+DeliveryItemWidget[state="warning"] #title_label2,
+DeliveryItemWidget[state="pending_post_process"] #title_label,
+DeliveryItemWidget[state="pending_post_process"] #title_label2 {
+    color : #1B82D1;
+}
+*/
+/*
+DeliveryItemWidget[state="error"] QLabel {
+    color : red;
+}
+
+DeliveryItemWidget[state="completed"] QLabel {
+    color : #C2C2C2;
 }
 /*
-Make the radio button blue when checked
+Make the details label on delivery items always grey
+This might be needed if styling above is activated and we want all
+labels except this one to have a special color
+DeliveryItemWidget QLabel#details_label {
+    color: #C2C2C2;
+}
 */
-QAbstractButton#only_repeated_check_box:checked {
-    color: #2C93E2;
-}
-#horizontalLayout_3 {
-    background-color: orange;
-}
-/* Titles in SG blue for cut summary cards */
-QLabel#shot_title_label, #version_title_label, #head_title_label, #cut_title_label, #tail_title_label {
-    color: #2C93E2
-}
-/* Success window */
-QFrame#success_frame {
-    color: #2C93E2;
-    border: 1px solid #555555;
-}
