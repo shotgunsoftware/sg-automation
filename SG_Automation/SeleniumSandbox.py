@@ -22,8 +22,8 @@ from optparse import OptionParser
 from pprint import pprint as pp
 
 def ppjson(doc):
-    # print json.dumps(doc, sort_keys=True, indent=4, separators=(',', ': '))
-    pp(doc, indent=4, width=1)
+    print json.dumps(doc, sort_keys=True, indent=4, separators=(',', ': '))
+    # pp(doc, indent=4, width=1)
 
 def get_site_version(url):
     try:
@@ -182,13 +182,13 @@ class SeleniumSandbox:
 
     def update_targets(self):
         self.available_suites = {}
-        for target in locateFiles(self.command_file, self.work_folder):
+        for target in locateFiles(self.command_file, os.path.join(self.work_folder, 'suites')):
             key = target[len(self.work_folder)+1:]
             key = key[:-len(self.command_file)-1]
             self.available_suites[key] = target
 
         self.available_cases = {}
-        for target in locateDirs("^C[0-9]+$", self.work_folder):
+        for target in locateDirs("^C[0-9]+$", os.path.join(self.work_folder, 'suites')):
             case_id = os.path.basename(target)
             case_id = int(case_id.lstrip('C'))
             self.available_cases[case_id] = target
@@ -376,7 +376,7 @@ class SeleniumSandbox:
             obj = prefix + i
             # Do not delete the build folder
             if os.path.isdir(obj):
-                if os.path.join(self.work_folder, "suites", "build") != obj:
+                if os.path.join(self.work_folder, "build") != obj:
                     print("Removing folder: %s" % obj)
                     shutil.rmtree(obj)
             # do not delete the config.xml file
@@ -515,6 +515,8 @@ class SeleniumSandbox:
         return False
 
     def execute_run(self, testrail_run, commit=False, run_all=False):
+        results = {"results": []}
+
         if not self.is_testrail_run(testrail_run):
             raise TestRailRunInvalid('TestRail run %s does not exist' % testrail_run)
 
@@ -523,9 +525,19 @@ class SeleniumSandbox:
         for test in self.testrail.send_get('get_tests/%s' % testrail_run):
             if test['title'].startswith('[Automation] '):
                 if test['case_id'] not in self.available_cases:
-                    print "WARNING: skipping test case %s (%s) as it is not present in this codebase/version" % (
-                        test['case_id'], test['title']
+                    warning = "WARNING: skipping test: T%s - %s (C%s) as it is not present in this codebase/version" % (
+                        test['id'], test['title'], test['case_id']
                     )
+                    print warning
+                    result = {
+                        'case_id': test['case_id'],
+                        'status_id': 4, # 4 = Retest
+                        'comment': "from Automation on %s\n%s" % (self.target_url, warning),
+                        'custom_os': [SeleniumSandbox.testrail_os[platform.system()]],
+                        'custom_webbrowser': [SeleniumSandbox.testrail_browsers['Firefox']],
+                        'version': "v%s (build %s)" % (self.target_version_name, self.target_version_hash)
+                    }
+                    results['results'].append(result)
                 else:
                     if run_all or test['status_id'] != 1:
                         tests[test["id"]] = test
@@ -536,12 +548,12 @@ class SeleniumSandbox:
 
         build_folder = os.path.join(
             self.get_work_folder(),
-            "suites",
             "build",
             netloc,
             datetime.datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss"))
+        if not os.path.exists(build_folder):
+            os.makedirs(build_folder)
 
-        results = {"results": []}
         for test in tests:
 
             test_suite = self.available_cases[tests[test]['case_id']]
@@ -741,26 +753,28 @@ def main(argv):
                 return_value = sandbox.execute_suite(suite)
             print("INFO:     Test completed")
         elif options.testrail_targets:
+            if options.testrail_run_all:
+                print("WARNING: Executing all of the tests regardless of their prior results")
+            else:
+                print("WARNING: Executing only tests that have not been successful")
             for target in options.testrail_targets:
                 print("INFO:")
                 runs = []
                 if sandbox.is_testrail_plan(target):
                     runs = sandbox.get_testrail_runs_from_plan(target)
-                    print("INFO: Using TestRail test plan: %s - %s" % (target, sandbox.testrail_plans[target]['name']))
+                    print("INFO: Using TestRail test plan: R%s - %s" % (target, sandbox.testrail_plans[target]['name']))
                 elif sandbox.is_testrail_run(target):
                     plan_id = sandbox.testrail_runs[target]["plan_id"]
                     if plan_id:
-                        print("INFO: Using test run from TestRail test plan: %s - %s" % (plan_id, sandbox.testrail_plans[plan_id]['name']))
+                        print("INFO: Using test run from TestRail test plan: R%s - %s" % (plan_id, sandbox.testrail_plans[plan_id]['name']))
                     runs = [target]
 
                 for run in runs:
-                    print("INFO: Using TestRail test run: %s - %s" % (run, sandbox.testrail_runs[run]['name']))
-                    if options.testrail_run_all:
-                        print("INFO: Executing all of the tests regardless of their prior results")
-                    else:
-                        print("INFO: Executing only tests that have not been successful")
+                    print("INFO: Using TestRail test run: R%s - %s" % (run, sandbox.testrail_runs[run]['name']))
                     return_value = sandbox.execute_run(run, options.testrail_commit, options.testrail_run_all)
-            print("INFO:     Test completed")
+            print("INFO:     Testing completed")
+            if options.testrail_targets and not options.testrail_commit:
+                print("WARNING: results have not been committed to TestRail")
         else:
             # Not tests were run, which is okay
             pass
