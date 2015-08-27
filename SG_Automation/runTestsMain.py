@@ -20,7 +20,7 @@ import SeleniumSandbox
 import appPrefs
 
 
-__version__ = "1.0"
+__version__ = "1.1"
 
 def locateFiles(pattern, root=os.curdir):
     '''Locate all files matching supplied filename pattern in and below
@@ -448,9 +448,10 @@ def main():
     prefs = appPrefs.AppPrefs(os.path.expanduser("~/.sg_automation.json"))
     app = QtGui.QApplication(sys.argv)
     app.setStyle("plastique")
-    # with open(os.path.join(currentLocation, "darkorange.stylesheet"), "r") as f:
-    #     read_data = f.read()
-    #     app.setStyleSheet(read_data)
+    with open(os.path.join(currentLocation, "darkorange.stylesheet"), "r") as f:
+        read_data = f.read()
+        read_data = read_data.replace(":resources/", os.path.join(currentLocation, "resources/"))
+        app.setStyleSheet(read_data)
     ui = MyMainGUI(prefs)
     ui.show()
     sys.exit(app.exec_())
