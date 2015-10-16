@@ -3,11 +3,13 @@
 import copy
 import fnmatch
 import os
+import platform
 import re
 import signal
 import subprocess
 import sys
 
+import PySide
 from PySide.QtCore import *
 from PySide.QtGui import *
 
@@ -16,6 +18,9 @@ from prefsGUI import *
 
 import SeleniumSandbox
 import appPrefs
+
+
+__version__ = "1.1"
 
 def locateFiles(pattern, root=os.curdir):
     '''Locate all files matching supplied filename pattern in and below
@@ -31,28 +36,13 @@ class MyPrefsGUI(QtGui.QDialog):
         self.dialog = Ui_Dialog()
         self.dialog.setupUi(self)
         self.dialog.browseButton.clicked.connect(self.browseDialog)
-        self.dialog.credsRadioButton.toggled.connect(self.radio_toggled)
         self.get_prefs()
 
-    def radio_toggled(self, value):
-        if self.dialog.credsRadioButton.isChecked():
-            self.dialog.userNameEdit.setEnabled(True)
-            self.dialog.userPasswordEdit.setEnabled(True)
-            self.dialog.apiKeyEdit.setEnabled(False)
-        else:
-            self.dialog.userNameEdit.setEnabled(False)
-            self.dialog.userPasswordEdit.setEnabled(False)
-            self.dialog.apiKeyEdit.setEnabled(True)
-
     def get_prefs(self):
-        password = self.prefs.get_pref("git_userpassword")
-        if password == "x-oauth-basic":
-            self.dialog.apiKeyRadioButton.setChecked(True)
-            self.dialog.apiKeyEdit.setText(self.prefs.get_pref("git_username"))
-        else:
-            self.dialog.credsRadioButton.setChecked(True)
-            self.dialog.userNameEdit.setText(self.prefs.get_pref("git_username"))
-            self.dialog.userPasswordEdit.setText(self.prefs.get_pref("git_userpassword"))
+        self.dialog.githubApiKeyEdit.setText(self.prefs.get_pref("github_api_key"))
+
+        self.dialog.emailAddressEdit.setText(self.prefs.get_pref("testrail_email_address"))
+        self.dialog.testrailApiKeyEdit.setText(self.prefs.get_pref("testrail_api_key"))
 
         work_folder = self.prefs.get_pref("work_folder") or os.path.expanduser("~/sg_automation")
         self.dialog.workFolderEdit.setText(work_folder)
@@ -62,12 +52,11 @@ class MyPrefsGUI(QtGui.QDialog):
         self.dialog.sitesList.setText("\n".join(item for item in web_sites))
 
     def set_prefs(self):
-        if self.dialog.credsRadioButton.isChecked():
-            self.prefs.set_pref("git_username", self.dialog.userNameEdit.text())
-            self.prefs.set_pref("git_userpassword", self.dialog.userPasswordEdit.text())
-        else:
-            self.prefs.set_pref("git_username", self.dialog.apiKeyEdit.text())
-            self.prefs.set_pref("git_userpassword", "x-oauth-basic")
+        self.prefs.set_pref("github_api_key", self.dialog.githubApiKeyEdit.text())
+
+        self.prefs.set_pref("testrail_email_address", self.dialog.emailAddressEdit.text())
+        self.prefs.set_pref("testrail_api_key", self.dialog.testrailApiKeyEdit.text())
+
         work_folder = self.dialog.workFolderEdit.text()
         if not os.path.exists(work_folder):
             os.makedirs(work_folder)
@@ -98,6 +87,7 @@ class MyMainGUI(QtGui.QMainWindow):
         self.ui.setupUi(self)
         self.ui.runTestsButton.clicked.connect(self.runTests)
         self.ui.stopTestsButton.clicked.connect(self.stopTests)
+        self.ui.clearLogButton.clicked.connect(lambda: self.ui.runOutput.clear())
 
         # QProcess object for external app
         self.process = QtCore.QProcess(self)
@@ -106,33 +96,43 @@ class MyMainGUI(QtGui.QMainWindow):
         self.process.readyRead.connect(self.dataReady)
         self.process.readyReadStandardError.connect(self.dataReadyErr)
 
+        # Menu setup
+        self.aboutAction = QtGui.QAction("&About", self, triggered=self.about)
+        self.preferencesAction = QtGui.QAction("&Preferences", self)
+        self.preferencesAction.triggered.connect(self.updatePrefs)
+
+        self.helpMenu = self.menuBar().addMenu("")
+        self.helpMenu.addAction(self.aboutAction)
+        self.helpMenu.addSeparator()
+        self.helpMenu.addAction(self.preferencesAction)
+
         # Just to prevent accidentally running multiple times
         # Disable the button when process starts, and enable it when it finishes
-        self.process.started.connect(lambda: self.ui.actionPrefs.setEnabled(False))
+        self.process.started.connect(lambda: self.preferencesAction.setEnabled(False))
         self.process.started.connect(lambda: self.ui.siteList.setEnabled(False))
         self.process.started.connect(lambda: self.ui.runTestsButton.setEnabled(False))
         self.process.started.connect(lambda: self.ui.stopTestsButton.setEnabled(True))
 
-        self.process.finished.connect(lambda: self.ui.actionPrefs.setEnabled(True))
+        self.process.finished.connect(lambda: self.preferencesAction.setEnabled(True))
         self.process.finished.connect(lambda: self.ui.siteList.setEnabled(True))
         self.process.finished.connect(lambda: self.ui.runTestsButton.setEnabled(True))
         self.process.finished.connect(lambda: self.ui.stopTestsButton.setEnabled(False))
 
-        self.process.finished.connect(lambda: self.consoleOutput("%s" % "<font color=\"green\">Success</font>\n" if self.process.exitCode() == 0 else "<font color=\"red\">Failed !</font>\n"))
-        self.process.finished.connect(self.updateSuitesList)
-
-        # Get the prefs panel
-        self.ui.actionPrefs.triggered.connect(self.updatePrefs)
+        self.process.finished.connect(lambda: self.consoleOutput("%s" % "<font color=\"green\">Completed</font>\n" if self.process.exitCode() == 0 else "<font color=\"red\">Failed !</font>\n"))
+        self.process.finished.connect(self.updateTestSuitesTargetList)
+        self.process.finished.connect(self.updateTestRailTargetList)
 
         # Ensure that we control the opening of links in the text browswer
         self.ui.runOutput.anchorClicked.connect(self.openLinks)
 
         self.ui.siteList.lineEdit().setPlaceholderText('Please enter the URL here')
-        self.ui.siteList.activated.connect(lambda: self.ui.targetList.setEnabled(False))
+        self.ui.siteList.activated.connect(lambda: self.ui.testSuitesTargetList.setEnabled(False))
+        self.ui.siteList.activated.connect(lambda: self.ui.testRailTargetList.setEnabled(False))
         self.ui.siteList.activated.connect(lambda: self.ui.runTestsButton.setEnabled(False))
         self.ui.siteList.currentIndexChanged.connect(self.validateURL)
         self.ui.siteList.editTextChanged.connect(lambda: self.ui.runTestsButton.setEnabled(False))
-        self.ui.siteList.editTextChanged.connect(lambda: self.ui.targetList.setEnabled(False))
+        self.ui.siteList.editTextChanged.connect(lambda: self.ui.testSuitesTargetList.setEnabled(False))
+        self.ui.siteList.editTextChanged.connect(lambda: self.ui.testRailTargetList.setEnabled(False))
 
 
     def __del__(self):
@@ -157,12 +157,30 @@ class MyMainGUI(QtGui.QMainWindow):
                 self.getFiles()
         self.ui.siteList.blockSignals(False)
 
-    def validatePrefs(self):
+    def validatePrefs(self, use_testrail=True):
         return_value = ""
         try:
-            self.sandbox = SeleniumSandbox.SeleniumSandbox("%s:%s" % (self.prefs.get_pref("git_username"), self.prefs.get_pref("git_userpassword")))
+            git_creds = "%s:x-oauth-basic" % self.prefs.get_pref("github_api_key")
+
+            testrail_creds = None
+            if use_testrail and self.prefs.get_pref("testrail_email_address") and self.prefs.get_pref("testrail_api_key"):
+                testrail_creds = "%s:%s" % (
+                    self.prefs.get_pref("testrail_email_address"),
+                    self.prefs.get_pref("testrail_api_key"),
+                )
+            self.sandbox = SeleniumSandbox.SeleniumSandbox(
+                git_token=git_creds,
+                testrail_token=testrail_creds
+            )
             self.sandbox.set_work_folder(self.prefs.get_pref("work_folder"))
-            message = 'Logged to GitHub as user %s, working out of folder %s' % (self.sandbox.get_user_login(), self.sandbox.get_work_folder())
+            github_user = self.sandbox.get_github_user()
+            message = 'Logged to GitHub as user %s' % github_user
+            if self.sandbox.is_using_testrail():
+                message += ' - Logged to TestRail as user %s' % self.sandbox.get_testrail_user()
+                self.ui.tabTestModes.setTabEnabled(1, True)
+            else:
+                self.ui.tabTestModes.setTabEnabled(1, False)
+            message += ' - Working out of folder %s' %self.sandbox.get_work_folder()
             self.consoleOutput(message + "\n")
             self.ui.statusbar.showMessage(message)
             seen = set()
@@ -182,11 +200,19 @@ class MyMainGUI(QtGui.QMainWindow):
         except SeleniumSandbox.GitHubError as e:
             self.consoleOutput("Error: %s" % e)
             return_value = "Unable to login to GitHub. Please enter valid GitHub credentials\n"
-            self.consoleOutput(return_value)
-            self.ui.statusbar.showMessage(return_value)
         except SeleniumSandbox.WorkFolderDoesNotExists as e:
             self.consoleOutput("Error: %s\n" % e)
             return_value = "Please enter an existing folder as work folder\n"
+        except SeleniumSandbox.TestRailServerNotFound as e:
+            self.consoleOutput("Error: %s\n" % e)
+            return_value = "TestRail server not found. Disabling TestRail functionalities\n"
+            self.consoleOutput(return_value)
+            return self.validatePrefs(False)
+        except SeleniumSandbox.TestRailInvalidCredentials as e:
+            self.consoleOutput("Error: %s\n" % e)
+            return_value = "Please enter valid TestRail credentials or leave blank\n"
+
+        if return_value:
             self.consoleOutput(return_value)
             self.ui.statusbar.showMessage(return_value)
         return return_value
@@ -210,13 +236,21 @@ class MyMainGUI(QtGui.QMainWindow):
         if message is None:
             self.prefs = old_prefs
             self.validatePrefs()
+        else:
+            self.updateTestSuitesTargetList()
+            self.updateTestRailTargetList()
 
     _patternClearLine = re.compile("\x1B\[2K")
     _patternGreen = re.compile("\x1B\[01;32m(.*)\x1B\[00m")
     _patternRed = re.compile("\x1B\[01;31m(.*)\x1B\[00m")
     _patternHttp = re.compile(r"\s(https?:/(/\S+)+)")
+    _patternWarning = re.compile("(WARNING: .*)\n")
     _patternFileReport = re.compile(r"You can consult the build report: (/\S+)/report.html")
-    _patternFailed = re.compile(r"(.*/test_rail/.*/C([0-9]+) failed)")
+    _patternFailed = re.compile(r"(.* test )(/.*/test_rail/.*/)C([0-9]+)( failed)")
+    _patternTest = re.compile(r"(test: )T([0-9]+) ")
+    _patternTestCase = re.compile(r"C([0-9]+)")
+    _patternTestRun = re.compile(r"(test run: )R([0-9]+) ")
+    _patternTestplan = re.compile(r"(test plan: )R([0-9]+) ")
 
     def consoleOutput(self, text, color=None):
         # Doing some filtering and markup
@@ -224,6 +258,9 @@ class MyMainGUI(QtGui.QMainWindow):
         text = self._patternHttp.sub(r'<a href="\1">\1</a>', text)
         text = self._patternGreen.sub(r'<font color="green">\1</font>', text)
         text = self._patternRed.sub(r'<font color="red">\1</font>', text)
+        text = self._patternWarning.sub(r'<font color="orange">\1</font>\n', text)
+        while '  ' in text:
+            text = text.replace("  ", u"\u00A0\u00A0")
 
         cursor = self.ui.runOutput.textCursor()
         cursor.movePosition(cursor.End)
@@ -234,17 +271,46 @@ class MyMainGUI(QtGui.QMainWindow):
             self.overwrite_last_line = True
         if color is not None:
             text = '<font color="%s">%s</font>' % (color, text)
-        # Patch to add link to TestRails
-        result = self._patternFailed.search(text)
+
+        result = self._patternTestRun.search(text)
         if result:
-            url = "http://meqa.autodesk.com/index.php?/cases/view/%s" % result.group(2)
-            message = '<font color="red">The TestRail case can seen here: <a href="%s">%s</a></font>' % (url, url)
-            text = self._patternFailed.sub(r'\1\n%s' % message, text)
+            url = "http://meqa.autodesk.com/index.php?/runs/view/%s" % result.group(2)
+            message = '<a href="%s">R%s</a>' % (url, result.group(2))
+            text = self._patternTestRun.sub(r'\1%s ' % message, text)
+        result = self._patternTestplan.search(text)
+        if result:
+            url = "http://meqa.autodesk.com/index.php?/plans/view/%s" % result.group(2)
+            message = '<a href="%s">R%s</a>' % (url, result.group(2))
+            text = self._patternTestplan.sub(r'\1%s ' % message, text)
+        result = self._patternTest.search(text)
+        if result:
+            url = "http://meqa.autodesk.com/index.php?/tests/view/%s" % result.group(2)
+            message = '<a href="%s">T%s</a>' % (url, result.group(2))
+            text = self._patternTest.sub(r'\1%s ' % message, text)
+        # Patch to add link to TestRails
+        # result = self._patternFailed.search(text)
+        # if result:
+        #     url = "http://meqa.autodesk.com/index.php?/cases/view/%s" % result.group(2)
+        #     message = '<font color="red">The TestRail case can seen here: <a href="%s">%s</a></font>' % (url, url)
+        #     text = self._patternFailed.sub(r'\1\n%s' % message, text)
+        # result = self._patternFailed.search(text)
+        # if result:
+        #     # ppjson(self.sandbox.)
+        #     url_case = "http://meqa.autodesk.com/index.php?/cases/view/%s" % result.group(3)
+        #     url_test = "http://meqa.autodesk.com/index.php?/tests/view/%s" % result.group(3)
+        #     message = '<a href="%s">T%s</a> (<a href="%s">C%s</a>)' % (url_test, result.group(3), url_case, result.group(3))
+        #     text = self._patternFailed.sub(r'\1%s\4' % message, text)
         result = self._patternFileReport.search(text)
         if result:
-            shortName = result.group(1).replace(self.currentLocation + "/", "")
-            message = '<font color="red">The failure report can seen here: <a href="file:/%s/report.html">%s</a></font>' % (result.group(1), shortName)
+            # shortName = result.group(1).replace(self.currentLocation + "/", "")
+            message = '<font color="red">The failure report can seen here: <a href="file:/%s/report.html">report.html</a></font>' % result.group(1)
             text = self._patternFileReport.sub(message, text)
+        # result = self._patternTestCase.search(text)
+        # if result:
+        #     url = "http://meqa.autodesk.com/index.php?/cases/view/%s" % result.group(1)
+        #     message = '<a href="%s">C%s</a>' % (url, result.group(1))
+        #     text = self._patternTestCase.sub(r'%s' % message, text)
+
         cursor.insertHtml(text.replace('\n', '<br>'))
         self.ui.runOutput.ensureCursorVisible()
         cursor.movePosition(cursor.End)
@@ -257,13 +323,34 @@ class MyMainGUI(QtGui.QMainWindow):
         self.consoleOutput(str(self.process.readAllStandardError()), "red")
 
     def runTests(self):
-        self.process.start(os.path.join(self.currentLocation, "SeleniumSandbox.py"), [
-            "-t", "%s:%s" % (self.prefs.get_pref("git_username"), self.prefs.get_pref("git_userpassword")),
-            "-w", self.prefs.get_pref("work_folder"),
-            "-s", self.ui.targetList.currentText(),
-#            "-c", "sg_config__timeout=30000",
+        current_tab_index = self.ui.tabTestModes.currentIndex()
+        args = [
+            "--git-token", "%s:x-oauth-basic" % self.prefs.get_pref("github_api_key"),
+            "--work-folder", self.prefs.get_pref("work_folder"),
+            "--no-fetch", "--no-sync",
             self.ui.siteList.currentText()
-            ])
+        ]
+
+        if current_tab_index == 0:
+            args += [
+                "--suites", self.ui.testSuitesTargetList.currentText()
+            ]
+        elif current_tab_index == 1:
+            run_id = self.ui.testRailTargetList.itemData(self.ui.testRailTargetList.currentIndex())
+            testrail_commit = self.ui.checkCommitResults.isChecked()
+            testrail_run_all = self.ui.checkRunAllTests.isChecked()
+            args += [
+                "--testrail-token", "%s:%s" %(self.prefs.get_pref("testrail_email_address"), self.prefs.get_pref("testrail_api_key")),
+                "--testrail-targets", "%d" % run_id
+            ]
+            if testrail_commit:
+                args.append("--testrail-commit")
+            if testrail_run_all:
+                args.append("--testrail-run-all")
+        else:
+            raise Exception("Unexpect Tab Index for tabTestModes")
+        # "--config-options", "sg_config__timeout=30000",
+        self.process.start(os.path.join(self.currentLocation, "SeleniumSandbox.py"), args)
 
     def openLinks(self, url):
         QDesktopServices.openUrl(url)
@@ -275,29 +362,54 @@ class MyMainGUI(QtGui.QMainWindow):
 
     def getFiles(self):
         self.process.start(os.path.join(self.currentLocation, "SeleniumSandbox.py"), [
-            "-t", "%s:%s" % (self.prefs.get_pref("git_username"), self.prefs.get_pref("git_userpassword")),
-            "-w", self.prefs.get_pref("work_folder"),
-#            "-v",
+            "--git-token", "%s:x-oauth-basic" % self.prefs.get_pref("github_api_key"),
+            # "--no-fetch", "--no-sync",
+            "--work-folder", self.prefs.get_pref("work_folder"),
+            # "--verbose",
             self.ui.siteList.currentText()
             ])
 
-    def updateSuitesList(self):
+    def updateTestRailTargetList(self):
+        testrail_tests = {}
+        currentSelection = self.ui.testRailTargetList.currentText()
+
+        for plan_id, plan in self.sandbox.testrail_plans.iteritems():
+            testrail_tests["%s - %d" % (plan["name"], plan_id)] = plan_id
+
+        for run_id, run in self.sandbox.testrail_runs.iteritems():
+            testrail_tests["%s - %d" % (run["name"], run_id)] = run_id
+
+        keys = testrail_tests.keys()
+        keys.sort()
+
+        self.ui.testRailTargetList.clear()
+        for key in keys:
+            self.ui.testRailTargetList.addItem(key, testrail_tests[key])
+
+        if self.ui.testRailTargetList.count() > 0:
+            self.ui.testRailTargetList.setEnabled(True)
+            self.ui.testRailTargetList.setEnabled(True)
+            idx = self.ui.testRailTargetList.findText(currentSelection)
+            if idx != -1:
+                self.ui.testRailTargetList.setCurrentIndex(idx)
+
+    def updateTestSuitesTargetList(self):
         workfolderLocation = os.path.join(self.currentLocation, self.prefs.get_pref("work_folder"))
         fileList = locateFiles('runTest.command', workfolderLocation)
         suiteList = []
-        currentSuite = self.ui.targetList.currentText()
+        currentSelection = self.ui.testSuitesTargetList.currentText()
         suitePattern = re.compile("%s/(suites.*)/runTest.command" % workfolderLocation)
         for filename in fileList:
             suiteList.append(suitePattern.sub(r'\1', filename))
 
-        self.ui.targetList.clear()
-        self.ui.targetList.addItems(suiteList)
-        if self.ui.targetList.count() > 0:
-            self.ui.targetList.setEnabled(True)
-            self.ui.runTestsButton.setEnabled(True)
-            idx = self.ui.targetList.findText(currentSuite)
+        self.ui.testSuitesTargetList.clear()
+        self.ui.testSuitesTargetList.addItems(suiteList)
+        if self.ui.testSuitesTargetList.count() > 0:
+            self.ui.testSuitesTargetList.setEnabled(True)
+            self.ui.testSuitesTargetList.setEnabled(True)
+            idx = self.ui.testSuitesTargetList.findText(currentSelection)
             if idx != -1:
-                self.ui.targetList.setCurrentIndex(idx)
+                self.ui.testSuitesTargetList.setCurrentIndex(idx)
 
     def show(self):
         super(MyMainGUI, self).show()
@@ -315,6 +427,22 @@ class MyMainGUI(QtGui.QMainWindow):
             else:
                 break
 
+    def about(self):
+        '''Popup a box with about message.'''
+        QMessageBox.about(self, "About ",
+        """\
+        <p>SG_Automation {}\
+        <p>Sandbox {}\
+        <p>Python {}\
+        <p>PySide version {}\
+        <p>Qt version {} on {}""".format(
+            __version__,
+            self.sandbox.__version__,
+            platform.python_version(),
+            PySide.__version__,
+            PySide.QtCore.__version__,
+            platform.system()))
+
 def main():
     currentLocation = os.path.dirname(os.path.realpath(__file__))
     prefs = appPrefs.AppPrefs(os.path.expanduser("~/.sg_automation.json"))
@@ -322,6 +450,7 @@ def main():
     app.setStyle("plastique")
     with open(os.path.join(currentLocation, "darkorange.stylesheet"), "r") as f:
         read_data = f.read()
+        read_data = read_data.replace(":resources/", os.path.join(currentLocation, "resources/"))
         app.setStyleSheet(read_data)
     ui = MyMainGUI(prefs)
     ui.show()
@@ -329,3 +458,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# TODO LIST:
+# @TODO: ensure that the stop tests button works

@@ -1,20 +1,29 @@
 #!/usr/bin/env python -u
 
 import base64
+import datetime
 import glob
 import hashlib
 import json
 import os
+import platform
 import re
 import shutil
 import signal
 import subprocess
 import sys
+import time
 import urllib2
 import urlparse
 
+import testrail
+
 from optparse import OptionParser
 from pprint import pprint as pp
+
+def ppjson(doc):
+    print json.dumps(doc, sort_keys=True, indent=4, separators=(',', ': '))
+    # pp(doc, indent=4, width=1)
 
 def get_site_version(url):
     try:
@@ -28,6 +37,25 @@ def get_site_version(url):
     version_name = pattern.group(1)
     version_hash = pattern.group(2)
     return (version_name, version_hash)
+
+def locateFiles(pattern, root=os.curdir):
+    '''Locate all files matching supplied filename pattern in and below
+    supplied root directory.'''
+    pattern = re.compile(pattern)
+    for path, dirs, files in os.walk(os.path.abspath(root)):
+        filenames = [f for f in files if pattern.match(f)]
+        for filename in filenames:
+            yield os.path.join(path, filename)
+
+def locateDirs(pattern, root=os.curdir):
+    '''Locate all folders matching supplied filename pattern in and below
+    supplied root directory.'''
+    pattern = re.compile(pattern)
+    for path, dirs, files in os.walk(os.path.abspath(root)):
+        dirnames = [d for d in dirs if pattern.match(d)]
+        for dirname in dirnames:
+            yield os.path.join(path, dirname)
+
 
 class SuiteNotFound(Exception):
     def __init__(self, message):
@@ -47,6 +75,36 @@ class GitHubError(Exception):
     def __str__(self):
         return str(self.message)
 
+class TestRailServerNotFound(Exception):
+    def __init__(self, message):
+        self.message = message
+    def __str__(self):
+        return str(self.message)
+
+class TestRailInvalidCredentials(Exception):
+    def __init__(self, message):
+        self.message = message
+    def __str__(self):
+        return str(self.message)
+
+class TestRailShotgunProjectNotFound(Exception):
+    def __init__(self, message):
+        self.message = message
+    def __str__(self):
+        return str(self.message)
+
+class TestRailRunInvalid(Exception):
+    def __init__(self, message):
+        self.message = message
+    def __str__(self):
+        return str(self.message)
+
+class TestRailPlanInvalid(Exception):
+    def __init__(self, message):
+        self.message = message
+    def __str__(self):
+        return str(self.message)
+
 class GitError(Exception):
     def __init__(self, message):
         self.message = message
@@ -59,14 +117,81 @@ class UnsupportedBranch(Exception):
     def __str__(self):
         return str(self.message)
 
-
-
 class SeleniumSandbox:
-    def __init__(self, git_token, debugging=False):
+    __version__ = "1.0"
+
+    # @TODO: These settings should be obtained from the TestRail server.
+    # @FIXME: values are hardcoded for the moment.
+    testrail_statuses = {
+        0: 1,
+        1: 5,
+        -1: 6
+    }
+    testrail_os = {
+        "Windows": 10,
+        "Linux": 20,
+        "Darwin": 30, # a.k.a. OSX
+        "iOS": 40,
+    }
+    testrail_browsers = {
+        "Chrome": 10,
+        "Firefox": 20,
+        "FirefoxESR": 30,
+        "Safari": 40,
+    }
+
+    def __init__(self, git_token, testrail_token=None, debugging=False, testrail_server="http://meqa.autodesk.com", testrail_project="Shotgun"):
         self.command_file = "runTest.command"
         self.git_token = git_token
+        self.testrail = None
+        self.testrail_user = None
+        self.testrail_runs = {}
+        self.testrail_plans = {}
+        self.testrail_suites = {}
+        if testrail_token:
+            if ':' in  testrail_token:
+                (testrail_email, testrail_api_key) = testrail_token.split(':')
+            self.testrail = testrail.APIClient(testrail_server)
+            self.testrail.user = testrail_email
+            self.testrail.password = testrail_api_key
+            try:
+                self.testrail_user = self.testrail.send_get('get_user_by_email&email=%s' % testrail_email)
+            except testrail.APIError:
+                raise  TestRailInvalidCredentials("Invalid credentials for TestRail")
+            except urllib2.URLError:
+                raise  TestRailServerNotFound("TestRail server not found. Enable VPN or use on the Autodesk Network.")
+
+            self.testrail_project_id = None
+            for project in self.testrail.send_get('get_projects'):
+                if project['name'] == testrail_project:
+                    self.testrail_project_id = project['id']
+                    break
+            if self.testrail_project_id is None:
+                raise TestRailShotgunProjectNotFound('Project %s cannot be found on TestRail' % testrail_project)
+            self.testrail_runs = self.get_testrail_runs()
+            self.testrail_plans = self.get_testrail_plans()
+            self.testrail_suites = self.get_testrail_suites()
         self.debugging = debugging
-        self.user = self.get_elems("https://api.github.com/user")
+        self.available_cases = {}
+        self.available_suites = {}
+        self.target_url = None
+        self.target_version_name = None
+        self.target_version_hash = None
+        self.shotgun_version = None
+        self.github_user = self.get_elems("https://api.github.com/user")
+
+    def update_targets(self):
+        self.available_suites = {}
+        for target in locateFiles(self.command_file, os.path.join(self.work_folder, 'suites')):
+            key = target[len(self.work_folder)+1:]
+            key = key[:-len(self.command_file)-1]
+            self.available_suites[key] = target
+
+        self.available_cases = {}
+        for target in locateDirs("^C[0-9]+$", os.path.join(self.work_folder, 'suites')):
+            case_id = os.path.basename(target)
+            case_id = int(case_id.lstrip('C'))
+            self.available_cases[case_id] = target
 
     def set_work_folder(self, work_folder):
         if not os.path.exists(work_folder):
@@ -87,17 +212,51 @@ class SeleniumSandbox:
     def get_work_folder(self):
         return self.work_folder
 
-    def get_user_login(self):
-        return self.user['login']
+    def get_github_user(self):
+        return self.github_user['login']
 
-    def fetch_shotgun_files(self, shotgun_version):
-        self.shotgun_version = self.get_tree(shotgun_version)["sha"]
+    def get_testrail_user(self):
+        if self.testrail_user:
+            return self.testrail_user['name']
+        else:
+            return ""
+
+    def is_using_testrail(self):
+        return self.testrail != None
+
+    def get_testrail_runs(self):
+        runs = {}
+        if self.testrail_project_id:
+            for run in self.testrail.send_get('get_runs/%d&is_completed=0' % self.testrail_project_id):
+                runs[run['id']] = run
+        return runs
+
+    def get_testrail_plans(self):
+        plans = {}
+        if self.testrail_project_id:
+            for plan in self.testrail.send_get('get_plans/%d&is_completed=0' % self.testrail_project_id):
+                plans[plan['id']] = plan
+        return plans
+
+    def get_testrail_suites(self):
+        suites = {}
+        if self.testrail_project_id:
+            for suite in self.testrail.send_get('get_suites/%d' % self.testrail_project_id):
+                suites[suite['id']] = suite
+        return suites
+
+    def get_target_version(self, target_url):
+        self.target_url = target_url
+        (self.target_version_name, self.target_version_hash) = get_site_version(target_url)
+        self.shotgun_version = self.get_tree(self.target_version_hash)["sha"]
+
+    def fetch_shotgun_files(self, target_url):
+        self.get_target_version(target_url)
         head_file = open(self.git_folder + os.path.sep + "HEAD", "w")
         head_file.write("%s\n" % self.shotgun_version)
         head_file.close()
 
-        self.selenium_version = self.find_tree(self.shotgun_version, "test/selenium")
-        self.fetch_tree(self.selenium_version)
+        self.fetch_tree(self.find_tree(self.shotgun_version, "test/selenium"))
         print(".")
 
     def get_elems(self, url):
@@ -197,8 +356,10 @@ class SeleniumSandbox:
                 raise Exception("Do not know how to handle object type %s for object %s" % (elem["type"], elem["path"]))
 
     def sync_filesystem(self, sha=None, prefix=None):
+        update_targets = False
         if sha is None:
-            sha = self.selenium_version
+            sha = self.find_tree(self.shotgun_version, "test/selenium")
+            update_targets = True
 
         tree = self.get_tree(sha)
 
@@ -213,10 +374,13 @@ class SeleniumSandbox:
         diff = [x for x in actual if x not in expected]
         for i in diff:
             obj = prefix + i
+            # Do not delete the build folder
             if os.path.isdir(obj):
-                print("Removing folder: %s" % obj)
-                shutil.rmtree(obj)
-            else:
+                if os.path.join(self.work_folder, "build") != obj:
+                    print("Removing folder: %s" % obj)
+                    shutil.rmtree(obj)
+            # do not delete the config.xml file
+            elif os.path.join(self.work_folder, "suites", "config", "config.xml") != obj:
                 print("Removing file: %s" % obj)
                 os.remove(obj)
 
@@ -254,9 +418,18 @@ class SeleniumSandbox:
                     raise Exception("Unable to process %s, do not know how to handle mode %s." % (path, mode))
             else:
                 raise Exception("Do not know how to handle object type %s for object %s" % (elem["type"], elem["path"]))
+        if update_targets:
+            self.update_targets()
 
     def generate_config(self, options):
         configFolder = os.path.join(self.work_folder, "suites", "config")
+        if 'sg_config__url' in options and options['sg_config__url'] != self.target_url:
+            print "WARNING: overriding option sg_config__url of\n    %s\n  with\n    %s" % (options['sg_config__url'], self.target_url)
+        options['sg_config__url'] = self.target_url
+
+        if "sg_config__check_shotgun_version" not in options:
+            options["sg_config__check_shotgun_version"] = "true"
+
         if os.path.exists(configFolder):
             configFile = open(os.path.join(configFolder, "config.xml"), "w")
             configFile.write(
@@ -274,16 +447,14 @@ class SeleniumSandbox:
         else:
             raise UnsupportedBranch("This site does not support Selenium tests")
 
+    def is_valid_suite(self, test_suite):
+        return test_suite in self.available_suites
 
-    def run_tests(self, test_suite):
-        if not test_suite.endswith(self.command_file):
-            test_suite = os.path.join(test_suite, self.command_file)
-        if not test_suite.startswith(self.work_folder):
-            test_suite = os.path.join(self.work_folder, test_suite)
+    def execute_suite(self, test_suite):
 
-        if os.path.exists(test_suite):
-            self.subProc = subprocess.Popen(test_suite)
+        if self.is_valid_suite(test_suite):
             code = -1
+            self.subProc = subprocess.Popen(self.available_suites[test_suite])
             try:
                 code = self.subProc.wait()
             except (KeyboardInterrupt, SystemExit):
@@ -295,6 +466,134 @@ class SeleniumSandbox:
         else:
             raise SuiteNotFound("Non existent test suite %s" % test_suite)
 
+    def get_testrail_runs_from_plan(self, test_plan):
+        runs = []
+        if test_plan not in self.testrail_plans:
+            raise TestRailRunInvalid('TestRail plan %s does not exist' % test_plan)
+        plan = self.testrail.send_get('get_plan/%s' % test_plan)
+        for entry in plan['entries']:
+            for run in entry['runs']:
+                # @FIXME: Okay... not to sure about that... perhaps a separate data member...
+                self.testrail_runs[run['id']] = run
+                runs.append(run['id'])
+        return runs
+
+    def is_testrail_plan(self, testrail_plan):
+        if testrail_plan in self.testrail_plans:
+            return True
+        elif testrail_plan in self.testrail_runs:
+            return False
+        else:
+            try:
+                plan = self.testrail.send_get('get_plan/%s' % testrail_plan)
+                if plan['project_id'] == self.testrail_project_id:
+                    self.testrail_plans[run["id"]] = plan
+                    return True
+            except Exception:
+                pass
+            #     raise TestRailPlanInvalid('TestRail plan %s does not exist' % testrail_plan)
+            # else:
+            #     raise TestRailPlanInvalid('TestRail plan %s does not belong to project Shotgun' % testrail_plan)
+        return False
+
+    def is_testrail_run(self, testrail_run):
+        if testrail_run in self.testrail_runs:
+            return True
+        elif testrail_run in self.testrail_plans:
+            return False
+        else:
+            try:
+                run = self.testrail.send_get('get_run/%s' % testrail_run)
+                if run['project_id'] == self.testrail_project_id:
+                    self.testrail_runs[run["id"]] = run
+                    return True
+            except Exception:
+                pass
+            #     raise TestRailRunInvalid('TestRail run %s does not exist' % testrail_run)
+            # else:
+            #     raise TestRailRunInvalid('TestRail run %s does not belong to project Shotgun' % testrail_run)
+        return False
+
+    def execute_run(self, testrail_run, commit=False, run_all=False):
+        results = {"results": []}
+
+        if not self.is_testrail_run(testrail_run):
+            raise TestRailRunInvalid('TestRail run %s does not exist' % testrail_run)
+
+        tests = {}
+
+        for test in self.testrail.send_get('get_tests/%s' % testrail_run):
+            if test['title'].startswith('[Automation] '):
+                if test['case_id'] not in self.available_cases:
+                    warning = "WARNING: skipping test: T%s - %s (C%s) as it is not present in this codebase/version" % (
+                        test['id'], test['title'], test['case_id']
+                    )
+                    print warning
+                    result = {
+                        'case_id': test['case_id'],
+                        'status_id': 4, # 4 = Retest
+                        'comment': "from Automation on %s\n%s" % (self.target_url, warning),
+                        'custom_os': [SeleniumSandbox.testrail_os[platform.system()]],
+                        'custom_webbrowser': [SeleniumSandbox.testrail_browsers['Firefox']],
+                        'version': "v%s (build %s)" % (self.target_version_name, self.target_version_hash)
+                    }
+                    results['results'].append(result)
+                else:
+                    if run_all or test['status_id'] != 1:
+                        tests[test["id"]] = test
+
+        netloc = ""
+        if self.target_url:
+            netloc = urlparse.urlparse(self.target_url).netloc
+
+        build_folder = os.path.join(
+            self.get_work_folder(),
+            "build",
+            netloc,
+            datetime.datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss"))
+        if not os.path.exists(build_folder):
+            os.makedirs(build_folder)
+
+        for test in tests:
+
+            test_suite = self.available_cases[tests[test]['case_id']]
+            test_suite = os.path.join(test_suite, self.command_file)
+
+            if os.path.exists(test_suite):
+                startTime = time.time()
+                stopTime = None
+                self.subProc = subprocess.Popen(test_suite, env={"BUILD_FOLDER": build_folder})
+                code = -1
+                try:
+                    code = self.subProc.wait()
+                    stopTime = time.time()
+                except (KeyboardInterrupt, SystemExit):
+                    self.subProc.kill()
+                except Exception as e:
+                    self.subProc.kill()
+                    raise
+                if code == 0 or code == 1 or code == -1:
+                    result = {
+                        'case_id': tests[test]['case_id'],
+                        'status_id': SeleniumSandbox.testrail_statuses[code],
+                        'comment': "from Automation on %s" % self.target_url ,
+                        'custom_os': [SeleniumSandbox.testrail_os[platform.system()]],
+                        'custom_webbrowser': [SeleniumSandbox.testrail_browsers['Firefox']],
+                        'version': "v%s (build %s)" % (self.target_version_name, self.target_version_hash)
+                    }
+                    if code == 0 or code == 1:
+                        elapsed = int(stopTime - startTime + 0.5)
+                        if elapsed > 0:
+                            result['elapsed'] = '%ds' % elapsed
+                    if code == -1:
+                        result['comment'] += " **Test aborted by user**"
+                    results['results'].append(result)
+                else:
+                    raise Exception("Unexpected return code from Selenium: %d" % code)
+            else:
+                raise SuiteNotFound("Non existent test suite %s" % test_suite)
+        if commit and len(results['results']) > 0:
+            self.testrail.send_post('add_results_for_cases/%s' % testrail_run, results)
 
     def signal_handler(self, sig, frm):
         sys.exit(1)
@@ -302,53 +601,110 @@ class SeleniumSandbox:
 
 def main(argv):
     parser = OptionParser(usage="usage: %prog [options] url")
-    parser.add_option("-t", "--git-token",
-        help="API key or credentials user:password or token::x-oauth-basic")
-    parser.add_option("-w", "--work-folder",
+    parser.add_option("--git-token",
+        help="API key or credentials user:password or token:x-oauth-basic")
+    parser.add_option("--testrail-token",
+        help="API key or credentials user:password or email:api-key (OPTIONAL)")
+    parser.add_option("--testrail-targets",
+        help="Comma-separated list of TestRail runs or plans to execute (OPTIONAL, requires --testrail-token)")
+    parser.add_option("--testrail-commit", action="store_true", dest="testrail_commit",
+        help="Output debugging information")
+    parser.add_option("--testrail-run-all", action="store_true", dest="testrail_run_all",
+        help="Run all the tests instead of only those that have not passed (OPTIONAL)")
+    parser.add_option("--suites",
+        help="Comma-separated list of path to Test suites to execute (OPTIONAL)")
+    parser.add_option("--work-folder",
         help="Work folder. Will be created if required")
-    parser.add_option("-s", "--suite",
-        help="Test suite to run")
+    parser.add_option("--config-options",
+        help="Comma separated list of key=value to be added to the config.xml (OPTIONAL)")
+    parser.add_option("--no-sync", action="store_true", dest="no_sync",
+        help="The local work folder files will not be synchronized, usually for debugging puroses (OPTIONAL)")
+    parser.add_option("--no-fetch", action="store_true", dest="no_fetch",
+        help="The git files are not updated from GitHub, usually for debugging puroses (OPTIONAL)")
     parser.add_option("-v", "--verbose", action="store_true", dest="verbose",
         help="Output debugging information")
-    parser.add_option("-c", "--config-options",
-        help="Comma separated list of key=value to be added to the config.xml")
     (options, args) = parser.parse_args()
 
     if options.verbose is None:
         options.verbose = False
 
-    if options.suite is None:
-        options.suite = False
+    if options.no_sync is None:
+        options.no_sync = False
+
+    if options.no_fetch is None:
+        options.no_fetch = False
+
+    if options.testrail_token is None:
+        options.testrail_token = ''
+
+    if options.suites is None:
+        options.suites = []
+    else:
+        options.suites = options.suites.split(',')
+
+    if options.testrail_targets is None:
+        options.testrail_targets = []
+    else:
+        targets = options.testrail_targets.split(',')
+        options.testrail_targets = []
+        for target in targets:
+            if re.match('^[1-9][0-9]*$', target):
+                options.testrail_targets.append(int(target))
+            else:
+                parser.error("Target '%s' invalid. A testrail-targets argument must be a number." % target)
+
+    if options.testrail_commit is None:
+        options.testrail_commit = False
+
+    if options.testrail_run_all is None:
+        options.testrail_run_all = False
 
     if options.config_options is None:
         options.config_options = ""
 
+    if (options.suites and options.testrail_targets):
+        parser.error("Options --suites and --testrail-targets are mutually exclusive.")
+
+    if options.testrail_targets and not options.testrail_token:
+        parser.error("A testrail-targets argument requires a valid TestRail token.")
+
     if None in vars(options).values():
-        print "Missing required option for Shotgun API connection."
-        parser.print_help()
-        sys.exit(2)
+        parser.error("Missing required option for Shotgun API connection.")
 
     if len(args) != 1:
         parser.error("incorrect number of arguments")
-        parser.print_help()
-        sys.exit(2)
 
     if not (args[0].startswith("https://") or args[0].startswith("http://")):
-        print "scheme not indicated, assuming http"
+        print "INFO: protocol scheme not indicated, assuming http"
         args[0] = "http://%s" % args[0]
 
     url = urlparse.urlparse(args[0])
     if url.netloc == "":
         parser.error("need to specify a Shotgun site URL")
-        parser.print_help()
-        sys.exit(2)
 
     shotgun_url = "%s://%s" % (url.scheme, url.netloc)
 
-    print "INFO: Connecting to GitHub"
-    sandbox = SeleniumSandbox(options.git_token, options.verbose)
+    if options.testrail_token:
+        print "INFO: Connecting to GitHub and TestRail"
+    else:
+        print "INFO: Connecting to GitHub"
+    sandbox = SeleniumSandbox(options.git_token, options.testrail_token, options.verbose)
     signal.signal(signal.SIGINT, sandbox.signal_handler)
-    print "INFO:     Connected as user %s" % sandbox.user["login"]
+    print "INFO:     Connected to GitHub as user %s" % sandbox.get_github_user()
+    if options.testrail_token:
+        print "INFO:     Connected to TestRail as user %s" % sandbox.get_testrail_user()
+
+    for target in  options.testrail_targets:
+        if not (sandbox.is_testrail_run(target) or sandbox.is_testrail_plan(target)):
+            parser.error("ERROR: Invalid TestRail run or plan: %s" % target)
+
+    if options.testrail_token and options.verbose:
+        print "  Runs"
+        for res_id in sandbox.testrail_runs.keys():
+            print "     %s - %s" % (sandbox.testrail_runs[res_id]['name'], res_id)
+        print "  Plans"
+        for res_id in sandbox.testrail_plans.keys():
+            print "     %s - %s" % (sandbox.testrail_plans[res_id]['name'], res_id)
 
     print "INFO: Setting work folder to %s" % options.work_folder
     if not os.path.exists(options.work_folder):
@@ -356,37 +712,72 @@ def main(argv):
         os.makedirs(options.work_folder)
     sandbox.set_work_folder(options.work_folder)
 
-    print("INFO: Getting version of site %s" % shotgun_url)
-    (version_name, version_hash) = get_site_version(shotgun_url)
-    print("INFO:     Found version to be %s" % version_hash)
+    if options.no_fetch:
+        print("INFO: not fetching files from repo")
+        sandbox.get_target_version(shotgun_url)
+    else:
+        print("INFO: Getting Shotgun files from repo for site  %s ... Please wait" % shotgun_url)
+        sandbox.fetch_shotgun_files(shotgun_url)
+        print("INFO:     Found version to be %s (%s)" % (sandbox.target_version_name, sandbox.target_version_hash))
+        print("INFO:     Done getting files")
 
-    print("INFO: Getting Shotgun files from repo. Please wait")
-    sandbox.fetch_shotgun_files(version_hash)
-    print("INFO:     Done getting files")
+    if options.no_sync:
+        print("INFO: Local work folder files will not be updated.")
+        sandbox.update_targets()
+    else:
+        print("INFO: Synchronizing filesystem with git files")
+        sandbox.sync_filesystem()
+        print("INFO:     Done synchronizing")
 
-    print("INFO: Synchronizing filesystem with git files")
-    sandbox.sync_filesystem()
-    print("INFO:     Done synchronizing")
+    for suite in options.suites:
+        if not (sandbox.is_valid_suite(suite)):
+            parser.error("ERROR: Invalid test suite: %s" % suite)
 
-    print("INFO: Generating config.xml")
-    run_options = {
-        "sg_config__url": shotgun_url,
-        "sg_config__check_shotgun_version": "true"
-    }
-    if len(options.config_options) > 0 and '=' in options.config_options:
-        for kv in options.config_options.split(","):
-            (k, v) = kv.split("=")
-            run_options[k] = v
-            if options.verbose:
-                print("INFO:     Adding config options %s=%s to run config" % (k, v))
 
-    try: 
-        sandbox.generate_config(run_options)
+    try:
+        if options.suites or options.testrail_targets:
+            print("INFO: Generating config.xml")
+            run_options = {}
+            if len(options.config_options) > 0 and '=' in options.config_options:
+                for kv in options.config_options.split(","):
+                    (k, v) = kv.split("=")
+                    run_options[k] = v
+                    if options.verbose:
+                        print("INFO:     Adding config options %s=%s to run config" % (k, v))
+            sandbox.generate_config(run_options)
 
-        if options.suite:
-            print("INFO: Running tests from %s" % options.suite)
-            return_value = sandbox.run_tests(options.suite)
+        if options.suites:
+            for suite in options.suites:
+                print("INFO:")
+                print("INFO: Running tests from %s" % suite)
+                return_value = sandbox.execute_suite(suite)
             print("INFO:     Test completed")
+        elif options.testrail_targets:
+            if options.testrail_run_all:
+                print("WARNING: Executing all of the tests regardless of their prior results")
+            else:
+                print("WARNING: Executing only tests that have not been successful")
+            for target in options.testrail_targets:
+                print("INFO:")
+                runs = []
+                if sandbox.is_testrail_plan(target):
+                    runs = sandbox.get_testrail_runs_from_plan(target)
+                    print("INFO: Using TestRail test plan: R%s - %s" % (target, sandbox.testrail_plans[target]['name']))
+                elif sandbox.is_testrail_run(target):
+                    plan_id = sandbox.testrail_runs[target]["plan_id"]
+                    if plan_id:
+                        print("INFO: Using test run from TestRail test plan: R%s - %s" % (plan_id, sandbox.testrail_plans[plan_id]['name']))
+                    runs = [target]
+
+                for run in runs:
+                    print("INFO: Using TestRail test run: R%s - %s" % (run, sandbox.testrail_runs[run]['name']))
+                    return_value = sandbox.execute_run(run, options.testrail_commit, options.testrail_run_all)
+            print("INFO:     Testing completed")
+            if options.testrail_targets and not options.testrail_commit:
+                print("WARNING: results have not been committed to TestRail")
+        else:
+            # Not tests were run, which is okay
+            pass
     except UnsupportedBranch as e:
         print("ERROR: This Shotgun site does not support Selenium automation!")
         sys.exit(2)
