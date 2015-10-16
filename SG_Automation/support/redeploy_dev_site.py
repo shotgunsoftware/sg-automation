@@ -16,12 +16,14 @@ requests.packages.urllib3.disable_warnings()
 
 def main(argv):
     parser = OptionParser(usage="usage: %prog [options] url")
-    parser.add_option("-t", "--rundeck-token",
+    parser.add_option("--rundeck-token",
         help="API key")
-    parser.add_option("-s", "--site-name",
+    parser.add_option("--site-name",
         help="Site to redeploy, without the com_shotgunstudio_ prefix.")
-    parser.add_option("-v", "--verbose", action="store_true", dest="verbose",
+    parser.add_option("--verbose", action="store_true", dest="verbose",
         help="Output debugging information")
+    parser.add_option("--timeout", type="int", default=300,
+        help="Number of seconds to wait for a deploy (defaults to 300 seconds, e.g. 5 minutes)")
     (options, args) = parser.parse_args()
 
     if options.verbose is None:
@@ -39,9 +41,8 @@ def main(argv):
         job_id = rd.get_job_id('Shotgun', name='Redeploy a dev site')
         res = rd.run_job('16653d20-77aa-42e5-afe7-9fbe509d4225', argString={'sitename': options.site_name, 'dbbackup': 'false'}, timeout=1)
         job_id = res['id']
-        retry = 0
-        while res['status'] == 'running' and retry < 20:
-            retry += 1
+        ts = time.time()
+        while res['status'] == 'running' and (time.time() - ts) < options.timeout:
             print "INFO: Waiting for the job to complete..."
             time.sleep(15)
             res = rd.execution_status(job_id)
