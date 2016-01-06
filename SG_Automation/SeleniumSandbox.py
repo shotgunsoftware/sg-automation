@@ -189,9 +189,10 @@ class SeleniumSandbox:
 
         self.available_cases = {}
         for target in locateDirs("^C[0-9]+$", os.path.join(self.work_folder, 'suites')):
-            case_id = os.path.basename(target)
-            case_id = int(case_id.lstrip('C'))
-            self.available_cases[case_id] = target
+            if os.path.exists(os.path.join(target, self.command_file)):
+                case_id = os.path.basename(target)
+                case_id = int(case_id.lstrip('C'))
+                self.available_cases[case_id] = target
 
     def set_work_folder(self, work_folder):
         if not os.path.exists(work_folder):

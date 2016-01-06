@@ -20,7 +20,7 @@ import SeleniumSandbox
 import appPrefs
 
 
-__version__ = "1.1"
+__version__ = "1.2"
 
 def locateFiles(pattern, root=os.curdir):
     '''Locate all files matching supplied filename pattern in and below

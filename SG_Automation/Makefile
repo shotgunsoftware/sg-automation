@@ -1,8 +1,8 @@
 all: runTestsGUI.py prefsGUI.py SG_Automation.app
 
 %.py: %.ui
-	/Applications/Shotgun.app/Contents/Frameworks/Python/bin/python              \
-	/Applications/Shotgun.app/Contents/Frameworks/Python/bin/pyside-uic $< -o $@ \
+	/Applications/Shotgun.app/Contents/Resources/Python/bin/python              \
+	/Applications/Shotgun.app/Contents/Resources/Python/bin/pyside-uic $< -o $@ \
 
 SG_Automation.app:                                              \
 	SG_Automation.app/Contents/MacOS/SG_Automation              \
