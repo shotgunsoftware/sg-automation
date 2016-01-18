@@ -189,9 +189,10 @@ class SeleniumSandbox:
 
         self.available_cases = {}
         for target in locateDirs("^C[0-9]+$", os.path.join(self.work_folder, 'suites')):
-            case_id = os.path.basename(target)
-            case_id = int(case_id.lstrip('C'))
-            self.available_cases[case_id] = target
+            if os.path.exists(os.path.join(target, self.command_file)):
+                case_id = os.path.basename(target)
+                case_id = int(case_id.lstrip('C'))
+                self.available_cases[case_id] = target
 
     def set_work_folder(self, work_folder):
         if not os.path.exists(work_folder):
@@ -454,13 +455,13 @@ class SeleniumSandbox:
 
         if self.is_valid_suite(test_suite):
             code = -1
-            self.subProc = subprocess.Popen(self.available_suites[test_suite])
+            self.subProc = subprocess.Popen(self.available_suites[test_suite], preexec_fn=os.setsid)
             try:
                 code = self.subProc.wait()
             except (KeyboardInterrupt, SystemExit):
-                self.subProc.kill()
+                os.killpg(self.subProc.pid, signal.SIGTERM)
             except Exception as e:
-                self.subProc.kill()
+                os.killpg(self.subProc.pid, signal.SIGTERM)
                 raise
             return code
         else:
@@ -562,15 +563,15 @@ class SeleniumSandbox:
             if os.path.exists(test_suite):
                 startTime = time.time()
                 stopTime = None
-                self.subProc = subprocess.Popen(test_suite, env={"BUILD_FOLDER": build_folder})
+                self.subProc = subprocess.Popen(test_suite, env={"BUILD_FOLDER": build_folder}, preexec_fn=os.setsid)
                 code = -1
                 try:
                     code = self.subProc.wait()
                     stopTime = time.time()
                 except (KeyboardInterrupt, SystemExit):
-                    self.subProc.kill()
+                    os.killpg(self.subProc.pid, signal.SIGTERM)
                 except Exception as e:
-                    self.subProc.kill()
+                    os.killpg(self.subProc.pid, signal.SIGTERM)
                     raise
                 if code == 0 or code == 1 or code == -1:
                     result = {
@@ -690,6 +691,7 @@ def main(argv):
         print "INFO: Connecting to GitHub"
     sandbox = SeleniumSandbox(options.git_token, options.testrail_token, options.verbose)
     signal.signal(signal.SIGINT, sandbox.signal_handler)
+    signal.signal(signal.SIGTERM, sandbox.signal_handler)
     print "INFO:     Connected to GitHub as user %s" % sandbox.get_github_user()
     if options.testrail_token:
         print "INFO:     Connected to TestRail as user %s" % sandbox.get_testrail_user()
