@@ -198,19 +198,29 @@ class MyMainGUI(QtGui.QMainWindow):
                 if idx != -1:
                     self.ui.siteList.setCurrentIndex(idx)
         except SeleniumSandbox.GitHubError as e:
-            self.consoleOutput("Error: %s" % e)
+            self.consoleOutputError("Error: %s" % e)
             return_value = "Unable to login to GitHub. Please enter valid GitHub credentials\n"
         except SeleniumSandbox.WorkFolderDoesNotExists as e:
-            self.consoleOutput("Error: %s\n" % e)
+            self.consoleOutputError("Error: %s\n" % e)
             return_value = "Please enter an existing folder as work folder\n"
         except SeleniumSandbox.TestRailServerNotFound as e:
-            self.consoleOutput("Error: %s\n" % e)
+            self.consoleOutputError("Error: %s\n" % e)
             return_value = "TestRail server not found. Disabling TestRail functionalities\n"
-            self.consoleOutput(return_value)
+            self.consoleOutputWarning(return_value)
             return self.validatePrefs(False)
         except SeleniumSandbox.TestRailInvalidCredentials as e:
-            self.consoleOutput("Error: %s\n" % e)
+            self.consoleOutputError("Error: %s\n" % e)
             return_value = "Please enter valid TestRail credentials or leave blank\n"
+        except SeleniumSandbox.TestRailInternalServerError as e:
+            self.consoleOutputError("Error: %s\n" % e)
+            return_value = "TestRail server not available. Disabling TestRail functionalities\n"
+            self.consoleOutputWarning(return_value)
+            return self.validatePrefs(False)
+        except SeleniumSandbox.TestRailError as e:
+            self.consoleOutputError("Error: %s\n" % e)
+            return_value = "TestRail server not available. Disabling TestRail functionalities\n"
+            self.consoleOutputWarning(return_value)
+            return self.validatePrefs(False)
 
         if return_value:
             self.consoleOutput(return_value)
@@ -251,6 +261,12 @@ class MyMainGUI(QtGui.QMainWindow):
     _patternTestCase = re.compile(r"C([0-9]+)")
     _patternTestRun = re.compile(r"(test run: )R([0-9]+) ")
     _patternTestplan = re.compile(r"(test plan: )R([0-9]+) ")
+
+    def consoleOutputError(self, text):
+        self.consoleOutput(text, "red")
+
+    def consoleOutputWarning(self, text):
+        self.consoleOutput(text, "orange")
 
     def consoleOutput(self, text, color=None):
         # Doing some filtering and markup

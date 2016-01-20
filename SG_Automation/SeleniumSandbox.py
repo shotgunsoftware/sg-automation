@@ -59,63 +59,51 @@ def locateDirs(pattern, root=os.curdir):
 
 class SuiteNotFound(Exception):
     def __init__(self, message):
-        self.message = message
-    def __str__(self):
-        return str(self.message)
+        super(SuiteNotFound, self).__init__(message)
 
 class WorkFolderDoesNotExists(Exception):
     def __init__(self, message):
-        self.message = message
-    def __str__(self):
-        return str(self.message)
+        super(WorkFolderDoesNotExists, self).__init__(message)
 
 class GitHubError(Exception):
     def __init__(self, message):
-        self.message = message
-    def __str__(self):
-        return str(self.message)
+        super(GitHubError, self).__init__(message)
+
+class TestRailError(Exception):
+    def __init__(self, message):
+        super(TestRailError, self).__init__(message)
+
+class TestRailInternalServerError(Exception):
+    def __init__(self, message):
+        super(TestRailInternalServerError, self).__init__(message)
 
 class TestRailServerNotFound(Exception):
     def __init__(self, message):
-        self.message = message
-    def __str__(self):
-        return str(self.message)
+        super(TestRailServerNotFound, self).__init__(message)
 
 class TestRailInvalidCredentials(Exception):
     def __init__(self, message):
-        self.message = message
-    def __str__(self):
-        return str(self.message)
+        super(TestRailInvalidCredentials, self).__init__(message)
 
 class TestRailShotgunProjectNotFound(Exception):
     def __init__(self, message):
-        self.message = message
-    def __str__(self):
-        return str(self.message)
+        super(TestRailShotgunProjectNotFound, self).__init__(message)
 
 class TestRailRunInvalid(Exception):
     def __init__(self, message):
-        self.message = message
-    def __str__(self):
-        return str(self.message)
+        super(TestRailRunInvalid, self).__init__(message)
 
 class TestRailPlanInvalid(Exception):
     def __init__(self, message):
-        self.message = message
-    def __str__(self):
-        return str(self.message)
+        super(TestRailPlanInvalid, self).__init__(message)
 
 class GitError(Exception):
     def __init__(self, message):
-        self.message = message
-    def __str__(self):
-        return str(self.message)
+        super(GitError, self).__init__(message)
 
 class UnsupportedBranch(Exception):
     def __init__(self, message):
-        self.message = message
-    def __str__(self):
-        return str(self.message)
+        super(UnsupportedBranch, self).__init__(message)
 
 class SeleniumSandbox:
     __version__ = "1.0"
@@ -156,8 +144,13 @@ class SeleniumSandbox:
             self.testrail.password = testrail_api_key
             try:
                 self.testrail_user = self.testrail.send_get('get_user_by_email&email=%s' % testrail_email)
-            except testrail.APIError:
-                raise  TestRailInvalidCredentials("Invalid credentials for TestRail")
+            except testrail.APIError as e:
+                if e.code == 401:
+                    raise TestRailInvalidCredentials("Invalid credentials for TestRail")
+                elif e.code == 500:
+                    raise TestRailInternalServerError("Internal server error for TestRail")
+                else:
+                    raise TestRailError("Unhandled server error %s" % e.code)
             except urllib2.URLError:
                 raise  TestRailServerNotFound("TestRail server not found. Enable VPN or use on the Autodesk Network.")
 
