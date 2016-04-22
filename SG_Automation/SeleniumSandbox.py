@@ -368,8 +368,11 @@ class SeleniumSandbox:
         diff = [x for x in actual if x not in expected]
         for i in diff:
             obj = prefix + i
+            if os.path.islink(obj):
+                print("Removing symlink: %s" % obj)
+                os.remove(obj)
             # Do not delete the build folder
-            if os.path.isdir(obj):
+            elif os.path.isdir(obj):
                 if os.path.join(self.work_folder, "build") != obj:
                     print("Removing folder: %s" % obj)
                     shutil.rmtree(obj)
