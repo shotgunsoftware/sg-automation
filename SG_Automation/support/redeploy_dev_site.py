@@ -35,7 +35,7 @@ def main(argv):
         sys.exit(2)
 
     try:
-        rd = Rundeck(api_token=options.rundeck_token, server='test:test007@rundeck.shotgunsoftware.com', protocol='http', port=80)
+        rd = Rundeck(api_token=options.rundeck_token, server='rundeck-staging.shotgunsoftware.com', protocol='http', port=4440)
 
         print "INFO: Redeploying to site %s" % options.site_name
         job_id = rd.get_job_id('Shotgun', name='Redeploy a dev site')
