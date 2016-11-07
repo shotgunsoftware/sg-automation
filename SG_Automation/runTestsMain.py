@@ -20,7 +20,7 @@ import SeleniumSandbox
 import appPrefs
 
 
-__version__ = "1.5"
+__version__ = "1.6"
 
 def locateFiles(pattern, root=os.curdir):
     '''Locate all files matching supplied filename pattern in and below
@@ -255,7 +255,7 @@ class MyMainGUI(QtGui.QMainWindow):
     _patternRed = re.compile("\x1B\[01;31m(.*)\x1B\[00m")
     _patternHttp = re.compile(r"\s(https?:/(/\S+)+)")
     _patternWarning = re.compile("(WARNING: .*)\n")
-    _patternFileReport = re.compile(r"You can consult the build report: (/\S+)/report.html")
+    _patternFileReport = re.compile(r"You can consult the build report: (/\S+)/(\S+report.html)")
     _patternFailed = re.compile(r"(.* test )(/.*/test_rail/.*/)C([0-9]+)( failed)")
     _patternTest = re.compile(r"(test: )T([0-9]+) ")
     _patternTestCase = re.compile(r"C([0-9]+)")
@@ -319,7 +319,7 @@ class MyMainGUI(QtGui.QMainWindow):
         result = self._patternFileReport.search(text)
         if result:
             # shortName = result.group(1).replace(self.currentLocation + "/", "")
-            message = '<font color="red">The failure report can seen here: <a href="file:/%s/report.html">report.html</a></font>' % result.group(1)
+            message = '<font color="red">The failure report can seen here: <a href="file:/%s/%s">%s</a></font>' % (result.group(1), result.group(2), result.group(2))
             text = self._patternFileReport.sub(message, text)
         # result = self._patternTestCase.search(text)
         # if result:
