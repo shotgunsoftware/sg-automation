@@ -62,101 +62,10 @@
      </item>
      <item>
       <layout class="QGridLayout" name="gridLayout_2">
-       <item row="18" column="1">
-        <widget class="QLabel" name="label_6">
-         <property name="text">
-          <string>Shotgun Site URLs</string>
-         </property>
-         <property name="alignment">
-          <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
-         </property>
-        </widget>
-       </item>
-       <item row="6" column="1">
-        <widget class="QLabel" name="label_13">
-         <property name="text">
-          <string>Email address</string>
-         </property>
-        </widget>
-       </item>
-       <item row="7" column="1">
-        <widget class="QLabel" name="label_14">
-         <property name="text">
-          <string>API Key</string>
-         </property>
-        </widget>
-       </item>
        <item row="6" column="2" colspan="2">
         <widget class="QLineEdit" name="emailAddressEdit"/>
        </item>
-       <item row="7" column="2" colspan="2">
-        <widget class="QLineEdit" name="testrailApiKeyEdit"/>
-       </item>
-       <item row="11" column="0" colspan="4">
-        <widget class="QLabel" name="label_9">
-         <property name="text">
-          <string>You need to indicate where on your machine we will save source files.</string>
-         </property>
-         <property name="alignment">
-          <set>Qt::AlignCenter</set>
-         </property>
-        </widget>
-       </item>
-       <item row="17" column="0" colspan="4">
-        <widget class="QLabel" name="label_10">
-         <property name="text">
-          <string>You can also indicate a list of Shotgun URLs you will frequently use.</string>
-         </property>
-         <property name="alignment">
-          <set>Qt::AlignCenter</set>
-         </property>
-        </widget>
-       </item>
-       <item row="19" column="1" colspan="3">
-        <widget class="Line" name="line_2">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-        </widget>
-       </item>
-       <item row="2" column="1" colspan="3">
-        <widget class="Line" name="line">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-        </widget>
-       </item>
-       <item row="1" column="1">
-        <widget class="QLabel" name="label_7">
-         <property name="enabled">
-          <bool>true</bool>
-         </property>
-         <property name="text">
-          <string>API Key</string>
-         </property>
-        </widget>
-       </item>
-       <item row="18" column="2" colspan="2">
-        <widget class="QTextBrowser" name="sitesList">
-         <property name="readOnly">
-          <bool>false</bool>
-         </property>
-        </widget>
-       </item>
-       <item row="16" column="0">
-        <spacer name="verticalSpacer_5">
-         <property name="orientation">
-          <enum>Qt::Vertical</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>20</width>
-           <height>40</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
-       <item row="14" column="0">
+       <item row="15" column="0">
         <spacer name="verticalSpacer_3">
          <property name="orientation">
           <enum>Qt::Vertical</enum>
@@ -169,12 +78,73 @@
          </property>
         </spacer>
        </item>
-       <item row="14" column="1" colspan="3">
-        <widget class="Line" name="line_4">
+       <item row="2" column="1" colspan="3">
+        <widget class="Line" name="line">
          <property name="orientation">
           <enum>Qt::Horizontal</enum>
          </property>
         </widget>
+       </item>
+       <item row="16" column="0" colspan="4">
+        <widget class="QLabel" name="label_11">
+         <property name="font">
+          <font>
+           <pointsize>15</pointsize>
+           <weight>75</weight>
+           <bold>true</bold>
+          </font>
+         </property>
+         <property name="text">
+          <string>Shotgun sites</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item row="7" column="1">
+        <widget class="QLabel" name="label_14">
+         <property name="text">
+          <string>API Key</string>
+         </property>
+        </widget>
+       </item>
+       <item row="19" column="1">
+        <widget class="QLabel" name="label_6">
+         <property name="text">
+          <string>Shotgun Site URLs</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
+         </property>
+        </widget>
+       </item>
+       <item row="8" column="1" colspan="3">
+        <widget class="Line" name="line_5">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item row="13" column="3">
+        <widget class="QPushButton" name="browseWorkFolderButton">
+         <property name="text">
+          <string>Browse</string>
+         </property>
+        </widget>
+       </item>
+       <item row="22" column="1">
+        <spacer name="verticalSpacer">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
        </item>
        <item row="3" column="0" colspan="4">
         <widget class="QLabel" name="label_12">
@@ -193,20 +163,81 @@
          </property>
         </widget>
        </item>
-       <item row="15" column="0" colspan="4">
-        <widget class="QLabel" name="label_11">
-         <property name="font">
-          <font>
-           <pointsize>15</pointsize>
-           <weight>75</weight>
-           <bold>true</bold>
-          </font>
+       <item row="15" column="1" colspan="3">
+        <widget class="Line" name="line_4">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item row="19" column="2" colspan="2">
+        <widget class="QTextBrowser" name="sitesList">
+         <property name="readOnly">
+          <bool>false</bool>
+         </property>
+        </widget>
+       </item>
+       <item row="17" column="0">
+        <spacer name="verticalSpacer_5">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item row="1" column="1">
+        <widget class="QLabel" name="label_7">
+         <property name="enabled">
+          <bool>true</bool>
          </property>
          <property name="text">
-          <string>Shotgun sites</string>
+          <string>API Key</string>
+         </property>
+        </widget>
+       </item>
+       <item row="11" column="0" colspan="4">
+        <widget class="QLabel" name="label_9">
+         <property name="text">
+          <string>You need to indicate where on your machine we will save source files.</string>
          </property>
          <property name="alignment">
           <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item row="6" column="1">
+        <widget class="QLabel" name="label_13">
+         <property name="text">
+          <string>Email address</string>
+         </property>
+        </widget>
+       </item>
+       <item row="18" column="0" colspan="4">
+        <widget class="QLabel" name="label_10">
+         <property name="text">
+          <string>You can also indicate a list of Shotgun URLs you will frequently use.</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item row="20" column="1" colspan="3">
+        <widget class="Line" name="line_2">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="2" colspan="2">
+        <widget class="QLineEdit" name="githubApiKeyEdit">
+         <property name="enabled">
+          <bool>true</bool>
          </property>
         </widget>
        </item>
@@ -217,8 +248,28 @@
          </property>
         </widget>
        </item>
+       <item row="9" column="0" colspan="4">
+        <widget class="QLabel" name="label_4">
+         <property name="font">
+          <font>
+           <pointsize>15</pointsize>
+           <weight>75</weight>
+           <bold>true</bold>
+          </font>
+         </property>
+         <property name="text">
+          <string>Local files location</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
        <item row="13" column="2">
         <widget class="QLineEdit" name="workFolderEdit"/>
+       </item>
+       <item row="7" column="2" colspan="2">
+        <widget class="QLineEdit" name="testrailApiKeyEdit"/>
        </item>
        <item row="5" column="0">
         <spacer name="verticalSpacer_2">
@@ -246,57 +297,6 @@
          </property>
         </spacer>
        </item>
-       <item row="21" column="1">
-        <spacer name="verticalSpacer">
-         <property name="orientation">
-          <enum>Qt::Vertical</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>20</width>
-           <height>40</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
-       <item row="13" column="3">
-        <widget class="QPushButton" name="browseButton">
-         <property name="text">
-          <string>Browse</string>
-         </property>
-        </widget>
-       </item>
-       <item row="9" column="0" colspan="4">
-        <widget class="QLabel" name="label_4">
-         <property name="font">
-          <font>
-           <pointsize>15</pointsize>
-           <weight>75</weight>
-           <bold>true</bold>
-          </font>
-         </property>
-         <property name="text">
-          <string>Local files location</string>
-         </property>
-         <property name="alignment">
-          <set>Qt::AlignCenter</set>
-         </property>
-        </widget>
-       </item>
-       <item row="1" column="2" colspan="2">
-        <widget class="QLineEdit" name="githubApiKeyEdit">
-         <property name="enabled">
-          <bool>true</bool>
-         </property>
-        </widget>
-       </item>
-       <item row="8" column="1" colspan="3">
-        <widget class="Line" name="line_5">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-        </widget>
-       </item>
        <item row="4" column="0" colspan="4">
         <widget class="QLabel" name="label_2">
          <property name="text">
@@ -304,6 +304,23 @@
          </property>
          <property name="alignment">
           <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item row="14" column="1">
+        <widget class="QLabel" name="label_3">
+         <property name="text">
+          <string>Config file</string>
+         </property>
+        </widget>
+       </item>
+       <item row="14" column="2">
+        <widget class="QLineEdit" name="configFileEdit"/>
+       </item>
+       <item row="14" column="3">
+        <widget class="QPushButton" name="browseConfigFileButton">
+         <property name="text">
+          <string>Browse</string>
          </property>
         </widget>
        </item>
