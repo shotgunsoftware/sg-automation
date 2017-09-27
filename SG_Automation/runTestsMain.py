@@ -19,7 +19,7 @@ import SeleniumSandbox
 import appPrefs
 
 
-__version__ = "1.7"
+__version__ = "1.8"
 
 
 def locate_files(pattern, root=os.curdir):
