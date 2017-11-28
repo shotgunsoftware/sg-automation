@@ -15,11 +15,16 @@ requests.packages.urllib3.disable_warnings()
 
 
 def main(argv):
+    allowed_version_types = ['branches', 'tags']
+
     parser = OptionParser(usage="usage: %prog [options] url")
     parser.add_option("--rundeck-token",
         help="API key")
+    parser.add_option("--version-type",
+        default=allowed_version_types[0],
+        help="Use git tags or branches for version. possible values are: %s" % ', '.join(allowed_version_types))
     parser.add_option("--branch",
-        help="Branch name in git of the code to deploy.")
+        help="Version of Shotgun to deploy after the reset. It can be a git tag or a branch name.")
     parser.add_option("--site-name",
         help="Site to redeploy, without the com_shotgunstudio_ prefix.")
     parser.add_option("--template-site-name",
@@ -38,6 +43,11 @@ def main(argv):
         parser.print_help()
         sys.exit(2)
 
+    if options.version_type not in allowed_version_types:
+        print "version-type must be one of: %s" % ', '.join(allowed_version_types)
+        parser.print_help()
+        sys.exit()
+
     try:
         rd = Rundeck(api_token=options.rundeck_token, server='rundeck-staging.shotgunsoftware.com', protocol='http', port=4440)
 
@@ -46,7 +56,7 @@ def main(argv):
         res = rd.run_job('332550b1-1df3-43c0-925f-d963fb279884', argString={
                 'sitename': options.site_name,
                 'template_sitename': options.template_site_name,
-                'version_type': 'branches',
+                'version_type': options.version_type,
                 'version': options.branch,
             }, timeout=1)
         job_id = res['id']
