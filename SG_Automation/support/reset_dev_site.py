@@ -15,12 +15,14 @@ requests.packages.urllib3.disable_warnings()
 
 
 def main(argv):
+    allowed_version_types = ['branches', 'tags']
+
     parser = OptionParser(usage="usage: %prog [options] url")
     parser.add_option("--rundeck-token",
         help="API key")
     parser.add_option("--version-type",
-        default='branches',
-        help="Use git tags or branches for version")
+        default=allowed_version_types[0],
+        help="Use git tags or branches for version. possible values are: %s" % ', '.join(allowed_version_types))
     parser.add_option("--branch",
         help="Version of Shotgun to deploy after the reset. It can be a git tag or a branch name.")
     parser.add_option("--site-name",
@@ -40,6 +42,11 @@ def main(argv):
         print "Missing required option for Shotgun API connection."
         parser.print_help()
         sys.exit(2)
+
+    if options.version_type not in allowed_version_types:
+        print "version-type must be one of: %s" % ', '.join(allowed_version_types)
+        parser.print_help()
+        sys.exit()
 
     try:
         rd = Rundeck(api_token=options.rundeck_token, server='rundeck-staging.shotgunsoftware.com', protocol='http', port=4440)
